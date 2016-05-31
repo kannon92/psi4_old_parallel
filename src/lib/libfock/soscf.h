@@ -146,6 +146,12 @@ public:
      * @return gradient_rms Returns the RMS of the gradient.
      */
     double gradient_rms();
+    /**
+     * Set eri_tensors for IncoreSOSCF
+     */
+    virtual void set_eri_tensors(SharedMatrix aaaa, SharedMatrix aaar)
+    {
+    }
 
 protected:
 
@@ -280,6 +286,7 @@ public:
     IncoreSOMCSCF(boost::shared_ptr<JK> jk, SharedMatrix AOTOSO, SharedMatrix H);
 
     virtual ~IncoreSOMCSCF();
+    virtual void set_eri_tensors(SharedMatrix aaaa, SharedMatrix aaar);
 
 protected:
 
@@ -287,7 +294,6 @@ protected:
     virtual void compute_Q();
     virtual void compute_Qk(SharedMatrix U, SharedMatrix Uact);
 
-    void set_eri_tensors(SharedMatrix aaaa, SharedMatrix aaar);
     bool eri_tensor_set_;
     SharedMatrix mo_aaaa_;
     SharedMatrix mo_aaar_;

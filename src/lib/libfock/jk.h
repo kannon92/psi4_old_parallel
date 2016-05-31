@@ -731,6 +731,7 @@ class GTFockJK: public JK{
    private:
       ///The actual instance that does the implementing
       boost::shared_ptr<MinimalInterface> Impl_;
+      int NMats_ = 0;
    protected:
       /// Do we need to backtransform to C1 under the hood?
       virtual bool C1() const { return true; }
@@ -756,9 +757,11 @@ class GTFockJK: public JK{
        *  \param[in] AreSymm A flag specifying whether the density
        *         matrices you'll be passing in are symmetric.
        */
-      GTFockJK(boost::shared_ptr<psi::BasisSet> Primary,
+      GTFockJK(boost::shared_ptr<BasisSet> Primary,
             size_t NMats=1,
             bool AreSymm=true);
+
+      GTFockJK(boost::shared_ptr<BasisSet> Primary);
 
 };
 

@@ -122,6 +122,7 @@ void CIWavefunction::transform_ci_integrals() {
     // This is a build and burn call
     ints_.reset();
 }
+
 void CIWavefunction::setup_dfmcscf_ints() {
     outfile->Printf("\n   ==> Setting up DF-MCSCF integrals <==\n\n");
 
@@ -148,6 +149,9 @@ void CIWavefunction::setup_dfmcscf_ints() {
 void CIWavefunction::transform_mcscf_integrals(bool approx_only) {
     if (MCSCF_Parameters_->mcscf_type == "DF") {
         transform_dfmcscf_ints(approx_only);
+    }
+    else if (MCSCF_Parameters_->mcscf_type == "CONV_PARALLEL") {
+        transform_mcscf_ints_gtfock(approx_only);
     } else {
         transform_mcscf_ints(approx_only);
     }
@@ -373,6 +377,135 @@ void CIWavefunction::setup_mcscf_ints() {
     jk_->set_memory(Process::environment.get_memory() * 0.8);
 
     ints_init_ = true;
+}
+void CIWavefunction::transform_mcscf_ints_gtfock(bool approx_only)
+{
+    ///Perform a integral transformation using jk object (GTFock)
+    ///KPH got this idea from Hohenstein's AO-CASSCF paper.
+    ///The goal is to use direct scf algorithm for computing the transformed integrals
+    ///This takes advantage of sparsity and allows for larger scale casscf calculations.  
+    
+    /// J(D)_{mu nu} = (mu nu | rho sigma ) D_{rho sigma}
+    ///Step 1:  Form a density for every active orbital ie
+    /// for every u and v form a density using C_DGER
+    ///     D_{mu nu}^{uv} = C_{mu u}C_{nu}^{v}
+    ///Step 2:  Fill the JK object with these densities
+    ///Step 3:  Build the J matrix
+    ///Step 4:  (p u | x y) = C_{mu p}^{T} J(D_{mu nu}^{xy}A)_{mu nu} C_{nu u}
+    ///Step 5:  Transfer these integrals to CI and SOMCSCF for CASSCF optimization
+    timer_on("CIWave: Parallel MCSCF integral transform");
+    //jk_ = boost::shared_ptr<JK>(new GTFockJK(basiss
+    int nact = CalcInfo_->num_ci_orbs;
+    outfile->Printf("\n nact: %d", nact);
+
+    SharedMatrix Ca_sym = this->Ca();
+    int nmo = this->nmo();
+    int nso = this->nso();
+    SharedMatrix Call(new Matrix(nso_, nmo_));
+    SharedMatrix CAct(new Matrix(nso_, nact));
+
+    // Transform from the SO to the AO basis for the C matrix.
+    // just transfroms the C_{mu_ao i} -> C_{mu_so i}
+    for (size_t h = 0, index = 0; h < nirrep_; ++h){
+        for (int i = 0; i < nmopi_[h]; ++i){
+            size_t nao = nso_;
+            size_t nso = nsopi_[h];
+
+            if (!nso_) continue;
+
+            C_DGEMV('N',nao,nso,1.0,AO2SO_->pointer(h)[0],nso,&Ca_sym->pointer(h)[0][i],nmopi_[h],0.0,&Call->pointer()[0][index],nmo);
+
+            index += 1;
+        }
+
+    }
+    std::vector<int> active_abs(nact, 0);
+    int orbnum = 0;
+    for (int h = 0, cinum = 0, orbnum = 0; h < CalcInfo_->nirreps; h++) {
+        orbnum += CalcInfo_->dropped_docc[h];
+        for (int i = 0; i < CalcInfo_->ci_orbs[h]; i++) {
+            active_abs[cinum++] = orbnum++;
+        }
+        orbnum += CalcInfo_->dropped_uocc[h];
+    }
+    for(size_t v = 0; v < nact; v++){
+            SharedVector Call_vec = Call->get_column(0, active_abs[v]);
+            CAct->set_column(0, v, Call_vec);
+    }
+
+
+    std::vector<std::pair<SharedMatrix, std::vector<int> > > D_vec;
+    for(size_t i = 0; i < nact; i++){
+        SharedVector C_i = CAct->get_column(0, i);
+        for(size_t j = i; j < nact; j++){
+            SharedMatrix D(new Matrix("D", nso, nso));
+            std::vector<int> ij(2);
+            ij[0] = i;
+            ij[1] = j;
+            SharedVector C_j = CAct->get_column(0, j);
+            /// D_{uv}^{ij} = C_i C_j^T
+            C_DGER(nso, nso, 1.0, &(C_i->pointer()[0]), 1, &(C_j->pointer()[0]), 1, D->pointer()[0], nso);
+            D_vec.push_back(std::make_pair(D, ij));
+        }
+    }
+    jk_ = JK::build_JK(basisset_, options_);
+    jk_->set_do_J(true);
+    jk_->set_allow_desymmetrization(false);
+    jk_->set_do_K(false);
+    jk_->initialize();
+    std::vector<boost::shared_ptr<Matrix> > &Cl = jk_->C_left();
+    std::vector<boost::shared_ptr<Matrix> > &Cr = jk_->C_right();
+    Cl.clear();
+    Cr.clear();
+    SharedMatrix Identity(new Matrix("I", nso, nso));
+    Identity->identity();
+    for(size_t d  = 0; d < D_vec.size(); d++)
+    {
+        Cl.push_back(D_vec[d].first);
+        Cr.push_back(Identity);
+    }
+    timer_on("CIWave: Parallel MCSCF Integral Fock build");
+    jk_->compute();
+    timer_off("CIWave: Parallel MCSCF Integral Fock build");
+    SharedMatrix casscf_ints(new Matrix("ALL Active", nmo * nact, nact * nact));
+    
+    for(int D_tasks = 0; D_tasks < D_vec.size(); D_tasks++)
+    {
+        int i = D_vec[D_tasks].second[0];
+        int j = D_vec[D_tasks].second[1];
+        SharedMatrix J = jk_->J()[D_tasks];
+        SharedMatrix half_trans = Matrix::triplet(Call, J, CAct, true, false, false);
+        for(size_t p = 0; p < nmo; p++){
+            for(size_t q = 0; q < nact; q++){
+                casscf_ints->set(p * nact + i, q * nact + j, half_trans->get(p, q));
+            }
+        }
+    }
+    Cl.clear();
+    Cr.clear();
+    jk_->set_do_K(true);
+    jk_->set_allow_desymmetrization(true);
+    SharedMatrix actMO(new Matrix("ALL Active", nact * nact, nact * nact));
+    for(int u = 0; u < nact; u++){
+        for(int v = 0; v < nact; v++){
+            for(int x = 0; x < nact; x++){
+                for(int y = 0; y < nact; y++){
+                    actMO->set(u * nact + v, x * nact + y, casscf_ints->get(active_abs[u] * nact + v, x * nact + y));
+                }
+            }
+        }
+    }
+    actMO->print();
+    onel_ints_from_jk();
+    pitzer_to_ci_order_twoel(actMO, CalcInfo_->twoel_ints);
+    tei_raaa_ = casscf_ints;
+    tei_aaaa_ = actMO;
+
+    tf_onel_ints(CalcInfo_->onel_ints, CalcInfo_->twoel_ints, CalcInfo_->tf_onel_ints);
+    form_gmat(CalcInfo_->onel_ints, CalcInfo_->twoel_ints, CalcInfo_->gmat);
+
+    timer_off("CIWave: Parallel MCSCF integral transform");
+    /// set jk options back to normal
 }
 void CIWavefunction::transform_mcscf_ints(bool approx_only) {
     if (!ints_init_) setup_mcscf_ints();
@@ -804,6 +937,7 @@ void CIWavefunction::onel_ints_from_jk() {
 
     SharedMatrix D = Matrix::doublet(Cdrc, Cdrc, false, true);
     CalcInfo_->edrc = J[0]->vector_dot(D);
+    outfile->Printf("\n CalcInfo_->edrc: %8.8f", CalcInfo_->edrc);
     Cdrc.reset();
     D.reset();
 }

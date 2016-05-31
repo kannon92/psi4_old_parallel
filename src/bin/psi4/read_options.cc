@@ -755,7 +755,7 @@ int read_options(const std::string &name, Options & options, bool suppress_print
     options.add_int("MCSCF_MAXITER", 30);
 
     /* - Do we run conventional or density fitted? -*/
-    options.add_str("MCSCF_TYPE", "CONV", "DF CONV");
+    options.add_str("MCSCF_TYPE", "CONV", "DF CONV CONV_PARALLEL");
 
     /*- Convergence algorithm to utilize. This is a flag for the future. !expert-*/
     options.add_str("MCSCF_ALGORITHM", "TWO_STEP", "ONE_STEP TWO_STEP");

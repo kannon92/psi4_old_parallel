@@ -60,6 +60,10 @@ void CIWavefunction::compute_mcscf()
     transform_dfmcscf_ints(!MCSCF_Parameters_->orbital_so);
     somcscf = boost::shared_ptr<SOMCSCF>(new DFSOMCSCF(jk_, dferi_, AO2SO_, H_));
   }
+  else if (MCSCF_Parameters_->mcscf_type == "CONV_PARALLEL"){
+    transform_mcscf_ints_gtfock(true);
+    somcscf = boost::shared_ptr<SOMCSCF>(new IncoreSOMCSCF(jk_, AO2SO_, H_));
+  }
   else {
     transform_mcscf_ints(!MCSCF_Parameters_->orbital_so);
     somcscf = boost::shared_ptr<SOMCSCF>(new DiskSOMCSCF(jk_, ints_, AO2SO_, H_));
@@ -95,6 +99,12 @@ void CIWavefunction::compute_mcscf()
   if (MCSCF_Parameters_->mcscf_type == "DF"){
     mcscf_type = "   @DF-MCSCF";
     outfile->Printf("\n   ==> Starting DF-MCSCF iterations <==\n\n");
+    outfile->Printf("                           "
+                      "Total Energy        Delta E      RMS Grad   NCI\n\n");
+  }
+  else if (MCSCF_Parameters_->mcscf_type == "CONV_PARALLEL"){
+    mcscf_type = "   @Parallel-MCSCF";
+    outfile->Printf("\n   ==> Starting Parallel-MCSCF iterations <==\n\n");
     outfile->Printf("                           "
                       "Total Energy        Delta E      RMS Grad   NCI\n\n");
   }
@@ -139,6 +149,10 @@ void CIWavefunction::compute_mcscf()
     SharedMatrix Cvir  = get_orbitals("VIR");
     SharedMatrix actTPDM = get_tpdm("SUM", true);
 
+    if (MCSCF_Parameters_->mcscf_type == "CONV_PARALLEL"){
+         
+        somcscf->set_eri_tensors(tei_aaaa_, tei_raaa_);
+    }
     somcscf->update(Cdocc, Cact, Cvir, opdm_, actTPDM);
     grad_rms = somcscf->gradient_rms();
 

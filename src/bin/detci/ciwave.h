@@ -274,6 +274,8 @@ private:
     bool ints_init_;
     bool df_ints_init_;
     boost::shared_ptr<IntegralTransform> ints_; // Non-DF
+    SharedMatrix tei_raaa_;
+    SharedMatrix tei_aaaa_;
     boost::shared_ptr<MOSpace> rot_space_;
     boost::shared_ptr<MOSpace> act_space_;
     boost::shared_ptr<DFERI> dferi_; // DF
@@ -293,6 +295,9 @@ private:
     void transform_mcscf_ints(bool approx_only = false);
     void read_dpd_ci_ints();
     void rotate_mcscf_twoel_ints(SharedMatrix K, SharedVector twoel_out);
+    /// Parallel(GTFock) integral transformation
+    void transform_mcscf_ints_gtfock(bool approx_only = false);
+    
 
     /// DF integral functions
     void setup_dfmcscf_ints();
