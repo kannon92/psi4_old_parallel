@@ -151,7 +151,7 @@ void CIWavefunction::transform_mcscf_integrals(bool approx_only) {
         transform_dfmcscf_ints(approx_only);
     }
     else if (MCSCF_Parameters_->mcscf_type == "CONV_PARALLEL") {
-        transform_mcscf_ints_gtfock(approx_only);
+        transform_mcscf_ints_aodirect(approx_only);
     } else {
         transform_mcscf_ints(approx_only);
     }
@@ -302,6 +302,7 @@ void CIWavefunction::transform_dfmcscf_ints(bool approx_only) {
     fseek(aaQF, 0L, SEEK_SET);
     fread(aaQp, sizeof(double), nact * nact * nQ, aaQF);
     SharedMatrix actMO = Matrix::doublet(aaQ, aaQ, false, true);
+    actMO->print();
     aaQ.reset();
 
     pitzer_to_ci_order_twoel(actMO, CalcInfo_->twoel_ints);
@@ -378,7 +379,16 @@ void CIWavefunction::setup_mcscf_ints() {
 
     ints_init_ = true;
 }
-void CIWavefunction::transform_mcscf_ints_gtfock(bool approx_only)
+void CIWavefunction::setup_mcscf_ints_aodirect()
+{
+    jk_ = JK::build_JK(basisset_, options_);
+    jk_->set_do_J(true);
+    jk_->set_allow_desymmetrization(true);
+    jk_->set_do_K(true);
+    jk_->initialize();
+    ints_init_ = true;
+}
+void CIWavefunction::transform_mcscf_ints_aodirect(bool approx_only)
 {
     ///Perform a integral transformation using jk object (GTFock)
     ///KPH got this idea from Hohenstein's AO-CASSCF paper.
@@ -394,7 +404,10 @@ void CIWavefunction::transform_mcscf_ints_gtfock(bool approx_only)
     ///Step 4:  (p u | x y) = C_{mu p}^{T} J(D_{mu nu}^{xy}A)_{mu nu} C_{nu u}
     ///Step 5:  Transfer these integrals to CI and SOMCSCF for CASSCF optimization
     timer_on("CIWave: Parallel MCSCF integral transform");
-    //jk_ = boost::shared_ptr<JK>(new GTFockJK(basiss
+    if(!ints_init_)
+    {
+        setup_mcscf_ints_aodirect();
+    }
     int nact = CalcInfo_->num_ci_orbs;
     outfile->Printf("\n nact: %d", nact);
 
@@ -420,6 +433,7 @@ void CIWavefunction::transform_mcscf_ints_gtfock(bool approx_only)
 
     }
     std::vector<int> active_abs(nact, 0);
+    std::vector<int> correlated_mos(nmo, 0);
     int orbnum = 0;
     for (int h = 0, cinum = 0, orbnum = 0; h < CalcInfo_->nirreps; h++) {
         orbnum += CalcInfo_->dropped_docc[h];
@@ -448,11 +462,6 @@ void CIWavefunction::transform_mcscf_ints_gtfock(bool approx_only)
             D_vec.push_back(std::make_pair(D, ij));
         }
     }
-    jk_ = JK::build_JK(basisset_, options_);
-    jk_->set_do_J(true);
-    jk_->set_allow_desymmetrization(false);
-    jk_->set_do_K(false);
-    jk_->initialize();
     std::vector<boost::shared_ptr<Matrix> > &Cl = jk_->C_left();
     std::vector<boost::shared_ptr<Matrix> > &Cr = jk_->C_right();
     Cl.clear();
@@ -465,19 +474,25 @@ void CIWavefunction::transform_mcscf_ints_gtfock(bool approx_only)
         Cr.push_back(Identity);
     }
     timer_on("CIWave: Parallel MCSCF Integral Fock build");
+    jk_->set_allow_desymmetrization(false);
+    jk_->set_do_K(false);
     jk_->compute();
     timer_off("CIWave: Parallel MCSCF Integral Fock build");
     SharedMatrix casscf_ints(new Matrix("ALL Active", nmo * nact, nact * nact));
     
+    ///GOTCHA:  Chemist ordering versus physicist ordering..blah
     for(int D_tasks = 0; D_tasks < D_vec.size(); D_tasks++)
     {
         int i = D_vec[D_tasks].second[0];
         int j = D_vec[D_tasks].second[1];
         SharedMatrix J = jk_->J()[D_tasks];
         SharedMatrix half_trans = Matrix::triplet(Call, J, CAct, true, false, false);
+        outfile->Printf("\n i: %d j: %d", i, j);
+        half_trans->print();
         for(size_t p = 0; p < nmo; p++){
             for(size_t q = 0; q < nact; q++){
-                casscf_ints->set(p * nact + i, q * nact + j, half_trans->get(p, q));
+                casscf_ints->set(p * nact + q, i * nact + j, half_trans->get(p, q));
+                casscf_ints->set(p * nact + q, j * nact + i, half_trans->get(p, q));
             }
         }
     }
@@ -1002,6 +1017,8 @@ void CIWavefunction::pitzer_to_ci_order_twoel(SharedMatrix src, SharedVector des
             }
         }
     }
+    dest->set_name("CI ACTIVE INTS");
+    dest->print();
 }
 
 }} // namespace psi::detci

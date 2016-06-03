@@ -295,8 +295,10 @@ private:
     void transform_mcscf_ints(bool approx_only = false);
     void read_dpd_ci_ints();
     void rotate_mcscf_twoel_ints(SharedMatrix K, SharedVector twoel_out);
-    /// Parallel(GTFock) integral transformation
-    void transform_mcscf_ints_gtfock(bool approx_only = false);
+    
+    /// A direct CASSCF integral transformation and fock builder (scf_type either direct or GTFOCK)
+    void transform_mcscf_ints_aodirect(bool approx_only = false);
+    void setup_mcscf_ints_aodirect();
     
 
     /// DF integral functions

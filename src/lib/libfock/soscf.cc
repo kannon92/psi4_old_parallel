@@ -217,6 +217,8 @@ void SOMCSCF::update(SharedMatrix Cocc, SharedMatrix Cact, SharedMatrix Cvir,
 
     matrices_["OPDM"] = OPDM;
     matrices_["TPDM"] = TPDM;
+    matrices_["OPDM"]->print();
+    matrices_["TPDM"]->print();
     set_act_MO();
 
     // Make sure our ras and active spaces align
@@ -239,7 +241,9 @@ void SOMCSCF::update(SharedMatrix Cocc, SharedMatrix Cact, SharedMatrix Cvir,
     Cl.push_back(CL_COPDM);
     Cr.push_back(matrices_["Cact"]);
 
+    outfile->Printf("\n About to compute ^IF and ^AF");
     jk_->compute();
+    outfile->Printf("\n Computed ^IF and ^AF");
 
     const std::vector<SharedMatrix>& J = jk_->J();
     const std::vector<SharedMatrix>& K = jk_->K();
@@ -259,6 +263,8 @@ void SOMCSCF::update(SharedMatrix Cocc, SharedMatrix Cact, SharedMatrix Cvir,
     J[1]->subtract(K[1]);
     matrices_["AFock"] = Matrix::triplet(matrices_["C"], J[1], matrices_["C"], true, false, false);
     matrices_["AFock"]->set_name("AFock");
+    matrices_["IFock"]->print();
+    matrices_["AFock"]->print();
 
     compute_Q();
 
@@ -297,6 +303,7 @@ void SOMCSCF::update(SharedMatrix Cocc, SharedMatrix Cact, SharedMatrix Cvir,
     // matrices_["Fock"]->print();
 
     // => Orbtial Gradient <= //
+    matrices_["Q"]->print();
     matrices_["Gradient"] = SharedMatrix(new Matrix("Gradient", nirrep_, noapi_, navpi_));
     for (int h=0; h<nirrep_; h++){
         if (!noapi_[h] || !navpi_[h]) continue;
@@ -319,8 +326,8 @@ void SOMCSCF::update(SharedMatrix Cocc, SharedMatrix Cact, SharedMatrix Cvir,
     zero_redundant(matrices_["Gradient"]);
     timer_off("SOMCSCF: Compute Gradient");
     matrices_["Precon"] = H_approx_diag();
-    // matrices_["Gradient"]->print();
-    // matrices_["Precon"]->print();
+    matrices_["Gradient"]->print();
+    matrices_["Precon"]->print();
 }
 SharedMatrix SOMCSCF::H_approx_diag()
 {
@@ -1394,10 +1401,14 @@ void IncoreSOMCSCF::compute_Q()
     int nact3 = nact_ * nact_ * nact_;
     double** TPDMp = matrices_["TPDM"]->pointer();
     double** aaaRp = mo_aaar_->pointer();
-    C_DGEMM('N','N',nact_,nmo_,nact3,1.0,TPDMp[0],nact3,aaaRp[0],nact3,1.0,denQp[0],nmo_);
+    matrices_["TPDM"]->set_name("TPDM");
+    mo_aaar_->set_name("MO_RAAA");
+    //C_DGEMM('N','N',nmo_,nact_,nact3,1.0,TPDMp[0],nact3,aaaRp[0],nact3,1.0,denQp[0],nact_);
+    /// TPDM_vwxy G_mwxy -> Q_vm
+    C_DGEMM('N','T',nact_,nmo_,nact3,1.0,TPDMp[0],nact3,aaaRp[0],nact3,1.0,denQp[0],nmo_);
 
     // Symmetry block Q
-    matrices_["Q"] = SharedMatrix(new Matrix("Qvn", nirrep_, nactpi_, nmopi_));
+    matrices_["Q"] = SharedMatrix(new Matrix("Q", nirrep_, nactpi_, nmopi_));
 
     int offset_act = 0;
     int offset_nmo = 0;
@@ -1411,6 +1422,7 @@ void IncoreSOMCSCF::compute_Q()
         for (int i=0, target=0; i<nactpi_[h]; i++){
             for (int j=0; j<nmopi_[h]; j++){
                 Qp[target++] = denQp[offset_act + i][offset_nmo + j];
+    //            Qp[target++] = denQp[offset_nmo + j][offset_act + i];
             }
         }
         offset_act += nactpi_[h];
