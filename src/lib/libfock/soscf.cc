@@ -217,8 +217,6 @@ void SOMCSCF::update(SharedMatrix Cocc, SharedMatrix Cact, SharedMatrix Cvir,
 
     matrices_["OPDM"] = OPDM;
     matrices_["TPDM"] = TPDM;
-    matrices_["OPDM"]->print();
-    matrices_["TPDM"]->print();
     set_act_MO();
 
     // Make sure our ras and active spaces align
@@ -263,8 +261,6 @@ void SOMCSCF::update(SharedMatrix Cocc, SharedMatrix Cact, SharedMatrix Cvir,
     J[1]->subtract(K[1]);
     matrices_["AFock"] = Matrix::triplet(matrices_["C"], J[1], matrices_["C"], true, false, false);
     matrices_["AFock"]->set_name("AFock");
-    matrices_["IFock"]->print();
-    matrices_["AFock"]->print();
 
     compute_Q();
 
@@ -303,7 +299,6 @@ void SOMCSCF::update(SharedMatrix Cocc, SharedMatrix Cact, SharedMatrix Cvir,
     // matrices_["Fock"]->print();
 
     // => Orbtial Gradient <= //
-    matrices_["Q"]->print();
     matrices_["Gradient"] = SharedMatrix(new Matrix("Gradient", nirrep_, noapi_, navpi_));
     for (int h=0; h<nirrep_; h++){
         if (!noapi_[h] || !navpi_[h]) continue;
@@ -326,8 +321,6 @@ void SOMCSCF::update(SharedMatrix Cocc, SharedMatrix Cact, SharedMatrix Cvir,
     zero_redundant(matrices_["Gradient"]);
     timer_off("SOMCSCF: Compute Gradient");
     matrices_["Precon"] = H_approx_diag();
-    matrices_["Gradient"]->print();
-    matrices_["Precon"]->print();
 }
 SharedMatrix SOMCSCF::H_approx_diag()
 {
