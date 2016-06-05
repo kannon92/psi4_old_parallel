@@ -411,13 +411,13 @@ void CIWavefunction::transform_mcscf_ints_aodirect(bool approx_only)
     ///Step 3:  Build the J matrix
     ///Step 4:  (p u | x y) = C_{mu p}^{T} J(D_{mu nu}^{xy}A)_{mu nu} C_{nu u}
     ///Step 5:  Transfer these integrals to CI and SOMCSCF for CASSCF optimization
+    outfile->Printf("\n   ==> Transforming CI integrals aodirect <==\n");
     timer_on("CIWave: Parallel MCSCF integral transform");
     if(!ints_init_)
     {
         setup_mcscf_ints_aodirect();
     }
     int nact = CalcInfo_->num_ci_orbs;
-    outfile->Printf("\n nact: %d", nact);
 
     SharedMatrix Ca_sym = this->Ca();
     int nmo = this->nmo();
@@ -957,7 +957,6 @@ void CIWavefunction::onel_ints_from_jk() {
 
     SharedMatrix D = Matrix::doublet(Cdrc, Cdrc, false, true);
     CalcInfo_->edrc = J[0]->vector_dot(D);
-    outfile->Printf("\n CalcInfo_->edrc: %8.8f", CalcInfo_->edrc);
     Cdrc.reset();
     D.reset();
 }

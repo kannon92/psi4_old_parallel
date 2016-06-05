@@ -152,10 +152,8 @@ void CIWavefunction::compute_mcscf()
     if (MCSCF_Parameters_->mcscf_type == "CONV_PARALLEL"){
          
         somcscf->set_eri_tensors(tei_aaaa_, tei_raaa_);
-        outfile->Printf("\n ERI Tensors are set");
     }
     somcscf->update(Cdocc, Cact, Cvir, opdm_, actTPDM);
-    outfile->Printf("\n Updated orbitals");
     grad_rms = somcscf->gradient_rms();
 
     outfile->Printf("%s Iter %3d:  % 5.14lf   % 1.4e  % 1.4e  %2d   %s\n", mcscf_type.c_str(), iter,
@@ -218,7 +216,6 @@ void CIWavefunction::compute_mcscf()
 
     // Transform integrals
     transform_mcscf_integrals(!MCSCF_Parameters_->orbital_so);
-    outfile->Printf("\n Transformed integrals");
 
   }// End MCSCF
   diis_manager->delete_diis_file();
