@@ -758,8 +758,8 @@ class GTFockJK: public JK{
        *         matrices you'll be passing in are symmetric.
        */
       GTFockJK(boost::shared_ptr<BasisSet> Primary,
-            size_t NMats=1,
-            bool AreSymm=true);
+            size_t NMats,
+            bool AreSymm);
 
       GTFockJK(boost::shared_ptr<BasisSet> Primary);
 

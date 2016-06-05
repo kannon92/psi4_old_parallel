@@ -32,17 +32,17 @@ namespace psi {
 ///Blank constructor(similar to all other JK)
 ///KPH wants to hold off on allocating Impl because it needs the number of 
 ///J and K matrices.
-//GTFockJK::GTFockJK(boost::shared<psi::BasisSet> Primary):
-//    JK(Primary)
-//{
-//
-//}
 
 GTFockJK::GTFockJK(boost::shared_ptr<psi::BasisSet> Primary,
       size_t NMats,bool AreSymm):
       JK(Primary),Impl_(new MinimalInterface(NMats,AreSymm))
 {
     NMats_ = NMats;
+}
+GTFockJK::GTFockJK(boost::shared_ptr<BasisSet> Primary) :
+    JK(Primary)
+{
+
 }
 
 void GTFockJK::compute_JK() {
@@ -52,6 +52,7 @@ void GTFockJK::compute_JK() {
    {
         NMats_ = C_left_.size(); 
         Impl_.reset(new MinimalInterface(NMats_, lr_symmetric_));
+        NMats_ = 0;
    }
    Impl_->SetP(D_ao_);
    Impl_->GetJ(J_ao_);

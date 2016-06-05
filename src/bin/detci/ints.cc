@@ -185,7 +185,6 @@ void CIWavefunction::rotate_mcscf_integrals(SharedMatrix k,
         }
 
     }
-    Uact->print();
 
 
     // => Setup <= //
@@ -302,7 +301,6 @@ void CIWavefunction::transform_dfmcscf_ints(bool approx_only) {
     fseek(aaQF, 0L, SEEK_SET);
     fread(aaQp, sizeof(double), nact * nact * nQ, aaQF);
     SharedMatrix actMO = Matrix::doublet(aaQ, aaQ, false, true);
-    actMO->print();
     aaQ.reset();
 
     pitzer_to_ci_order_twoel(actMO, CalcInfo_->twoel_ints);
@@ -381,7 +379,17 @@ void CIWavefunction::setup_mcscf_ints() {
 }
 void CIWavefunction::setup_mcscf_ints_aodirect()
 {
-    jk_ = JK::build_JK(basisset_, options_);
+    if(options_.get_str("SCF_TYPE") == "GTFOCK")
+    {
+ #ifdef HAVE_JK_FACTORY
+        Process::environment.set_legacy_molecule(molecule_);
+        jk_ = boost::shared_ptr<JK>(new GTFockJK(basisset_));
+    #else
+        throw PSIEXCEPTION("GTFock was not compiled in this version");
+    #endif
+    } else {
+        jk_ = JK::build_JK(this->basisset(), this->options_);
+    }
     jk_->set_do_J(true);
     jk_->set_allow_desymmetrization(true);
     jk_->set_do_K(true);
@@ -487,8 +495,6 @@ void CIWavefunction::transform_mcscf_ints_aodirect(bool approx_only)
         int j = D_vec[D_tasks].second[1];
         SharedMatrix J = jk_->J()[D_tasks];
         SharedMatrix half_trans = Matrix::triplet(Call, J, CAct, true, false, false);
-        outfile->Printf("\n i: %d j: %d", i, j);
-        half_trans->print();
         for(size_t p = 0; p < nmo; p++){
             for(size_t q = 0; q < nact; q++){
                 casscf_ints->set(p * nact + q, i * nact + j, half_trans->get(p, q));
@@ -510,7 +516,6 @@ void CIWavefunction::transform_mcscf_ints_aodirect(bool approx_only)
             }
         }
     }
-    actMO->print();
     onel_ints_from_jk();
     pitzer_to_ci_order_twoel(actMO, CalcInfo_->twoel_ints);
     tei_raaa_ = casscf_ints;
@@ -1018,7 +1023,6 @@ void CIWavefunction::pitzer_to_ci_order_twoel(SharedMatrix src, SharedVector des
         }
     }
     dest->set_name("CI ACTIVE INTS");
-    dest->print();
 }
 
 }} // namespace psi::detci
