@@ -379,6 +379,7 @@ void CIWavefunction::setup_mcscf_ints() {
 }
 void CIWavefunction::setup_mcscf_ints_aodirect()
 {
+    timer_on("CIWAVE: Setup MCSCF INTS AO");
     if(options_.get_str("SCF_TYPE") == "GTFOCK")
     {
  #ifdef HAVE_JK_FACTORY
@@ -395,6 +396,7 @@ void CIWavefunction::setup_mcscf_ints_aodirect()
     jk_->set_do_K(true);
     jk_->initialize();
     ints_init_ = true;
+    timer_off("CIWAVE: Setup MCSCF INTS AO");
 }
 void CIWavefunction::transform_mcscf_ints_aodirect(bool approx_only)
 {
@@ -427,6 +429,7 @@ void CIWavefunction::transform_mcscf_ints_aodirect(bool approx_only)
 
     // Transform from the SO to the AO basis for the C matrix.
     // just transfroms the C_{mu_ao i} -> C_{mu_so i}
+    timer_on("CIWave: Transform C matrix from SO to AO");
     for (size_t h = 0, index = 0; h < nirrep_; ++h){
         for (int i = 0; i < nmopi_[h]; ++i){
             size_t nao = nso_;
@@ -440,6 +443,7 @@ void CIWavefunction::transform_mcscf_ints_aodirect(bool approx_only)
         }
 
     }
+    timer_off("CIWave: Transform C matrix from SO to AO");
     std::vector<int> active_abs(nact, 0);
     std::vector<int> correlated_mos(nmo, 0);
     int orbnum = 0;
@@ -456,6 +460,7 @@ void CIWavefunction::transform_mcscf_ints_aodirect(bool approx_only)
     }
 
 
+    timer_on("Forming Active Psuedo Density");
     std::vector<std::pair<SharedMatrix, std::vector<int> > > D_vec;
     for(size_t i = 0; i < nact; i++){
         SharedVector C_i = CAct->get_column(0, i);
@@ -470,6 +475,7 @@ void CIWavefunction::transform_mcscf_ints_aodirect(bool approx_only)
             D_vec.push_back(std::make_pair(D, ij));
         }
     }
+    timer_off("Forming Active Psuedo Density");
     std::vector<boost::shared_ptr<Matrix> > &Cl = jk_->C_left();
     std::vector<boost::shared_ptr<Matrix> > &Cr = jk_->C_right();
     Cl.clear();
@@ -481,14 +487,15 @@ void CIWavefunction::transform_mcscf_ints_aodirect(bool approx_only)
         Cl.push_back(D_vec[d].first);
         Cr.push_back(Identity);
     }
-    timer_on("CIWave: Parallel MCSCF Integral Fock build");
     jk_->set_allow_desymmetrization(false);
     jk_->set_do_K(false);
+    timer_on("CIWave: Parallel MCSCF Integral Transformation Fock build");
     jk_->compute();
-    timer_off("CIWave: Parallel MCSCF Integral Fock build");
+    timer_off("CIWave: Parallel MCSCF Integral Transformation Fock build");
     SharedMatrix casscf_ints(new Matrix("ALL Active", nmo * nact, nact * nact));
     
     ///GOTCHA:  Chemist ordering versus physicist ordering..blah
+    timer_on("CIWave: Filling the (pu|xy) integrals");
     for(int D_tasks = 0; D_tasks < D_vec.size(); D_tasks++)
     {
         int i = D_vec[D_tasks].second[0];
@@ -502,11 +509,13 @@ void CIWavefunction::transform_mcscf_ints_aodirect(bool approx_only)
             }
         }
     }
+    timer_off("CIWave: Filling the (pu|xy) integrals");
     Cl.clear();
     Cr.clear();
     jk_->set_do_K(true);
     jk_->set_allow_desymmetrization(true);
     SharedMatrix actMO(new Matrix("ALL Active", nact * nact, nact * nact));
+    timer_on("CIWave: Filling the (zu|xy) integrals");
     for(int u = 0; u < nact; u++){
         for(int v = 0; v < nact; v++){
             for(int x = 0; x < nact; x++){
@@ -516,6 +525,7 @@ void CIWavefunction::transform_mcscf_ints_aodirect(bool approx_only)
             }
         }
     }
+    timer_off("CIWave: Filling the (zu|xy) integrals");
     onel_ints_from_jk();
     pitzer_to_ci_order_twoel(actMO, CalcInfo_->twoel_ints);
     tei_raaa_ = casscf_ints;
@@ -929,6 +939,7 @@ void CIWavefunction::form_gmat(SharedVector onel, SharedVector twoel, SharedVect
 }
 
 void CIWavefunction::onel_ints_from_jk() {
+    timer_on("CIWave: onel_ints_from_jk");
     SharedMatrix Cact = get_orbitals("ACT");
     SharedMatrix Cdrc = get_orbitals("DRC");
     std::vector<SharedMatrix>& Cl = jk_->C_left();
@@ -959,6 +970,7 @@ void CIWavefunction::onel_ints_from_jk() {
     CalcInfo_->edrc = J[0]->vector_dot(D);
     Cdrc.reset();
     D.reset();
+    timer_off("CIWave: onel_ints_from_jk");
 }
 
 void CIWavefunction::pitzer_to_ci_order_onel(SharedMatrix src, SharedVector dest){

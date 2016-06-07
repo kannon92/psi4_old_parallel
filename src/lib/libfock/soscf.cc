@@ -239,9 +239,7 @@ void SOMCSCF::update(SharedMatrix Cocc, SharedMatrix Cact, SharedMatrix Cvir,
     Cl.push_back(CL_COPDM);
     Cr.push_back(matrices_["Cact"]);
 
-    outfile->Printf("\n About to compute ^IF and ^AF");
     jk_->compute();
-    outfile->Printf("\n Computed ^IF and ^AF");
 
     const std::vector<SharedMatrix>& J = jk_->J();
     const std::vector<SharedMatrix>& K = jk_->K();
