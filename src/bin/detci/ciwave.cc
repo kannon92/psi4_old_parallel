@@ -31,6 +31,8 @@
 #include <psifiles.h>
 #include <libqt/qt.h>
 #include <libscf_solver/hf.h>
+#include <algorithm>
+#include <libmints/mintshelper.h>
 
 #include "globaldefs.h"
 #include "ciwave.h"
@@ -316,7 +318,42 @@ Dimension CIWavefunction::get_dimension(const std::string& orbital_name) {
     delete[] end;
     return dim;
 }
+void CIWavefunction::print_natural_orbitals()
+{
+    outfile->Printf("\n\t\t ================================== \t\t\n");
+    outfile->Printf("\n\t\t     Natural Orbital Analysis \t\t\n");
+    
+    Dimension active = get_dimension("ACT");
+    SharedVector OCC(new Vector("ALPHA+BETA Occupation", nirrep_, active));
+    SharedMatrix NO(new Matrix(nirrep_, active, active));
+    opdm_->diagonalize(NO, OCC, descending);
+    
+    std::vector< std::pair<double, std::pair<int, int> > > vec_irrep_occupation;
 
+    for(int h = 0; h < nirrep_; h++){
+        for(int u = 0; u < active[h]; u++)
+        {
+        std::pair<double, std::pair< int, int> > irrep_occ = std::make_pair(OCC->get(h,u), std::make_pair(h, u + 1));
+        vec_irrep_occupation.push_back(irrep_occ);
+
+        }
+    }
+    CharacterTable ct = Process::environment.molecule()->point_group()->char_table();
+    std::sort(vec_irrep_occupation.begin(), vec_irrep_occupation.end(), std::greater<std::pair<double, std::pair<int, int> > >());
+
+    int count = 0;
+    outfile->Printf( "\n    ");
+    for(int i = 0; i < vec_irrep_occupation.size(); i++){
+        outfile->Printf( " %4d%4s%11.6f   ", vec_irrep_occupation[i].second.second, ct.gamma(vec_irrep_occupation[i].second.first).symbol(), vec_irrep_occupation[i].first);
+        if(count++ % 3 == 2 && count != vec_irrep_occupation.size())
+            outfile->Printf(  "\n    ");
+    }
+    outfile->Printf("\n\n");
+    outfile->Printf("\n\t\t ================================== \t\t\n");
+
+
+    
+}
 SharedMatrix CIWavefunction::get_opdm(int Iroot, int Jroot,
                                       const std::string& spin,
                                       bool full_space) {
