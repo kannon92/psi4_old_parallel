@@ -280,6 +280,7 @@ void CIWavefunction::compute_mcscf()
       mi_coeff);
    outfile->Printf("\n");
  }
+ print_natural_orbitals();
  free(mi_iac);    free(mi_ibc);
  free(mi_iaidx);  free(mi_ibidx);
  free(mi_coeff);
