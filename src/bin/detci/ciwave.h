@@ -425,6 +425,8 @@ private:
     SharedMatrix opdm_;
     SharedMatrix opdm_a_;
     SharedMatrix opdm_b_;
+    // print the natural orbitals after mcscf
+    void print_natural_orbitals();
 
     std::vector<SharedMatrix> tpdm(SharedCIVector Ivec, SharedCIVector Jvec,
                                    std::vector<std::tuple<int, int, double> > states_vec);
