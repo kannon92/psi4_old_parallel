@@ -14,9 +14,9 @@
 
 
 #Build Global Arrays (if needed)
-include(cmake/BuildGA.txt)
-set(JK_GA_LIBS ${JK_GA_LIB}/libga.a
-               ${JK_GA_LIB}/libarmci.a
+#include(cmake/BuildGA.txt)
+set(JK_GA_LIBS "/home/kannon/src/GTFock/ga-5-3/GAlib/lib64/libga.a"
+               "/home/kannon/src/GTFock/ga-5-3/GAlib/lib64/libarmci.a"
 )
 #I'm going to assume the user doesn't have GTFock
 #so let's build that now
