@@ -52,8 +52,8 @@ void GTFockJK::compute_JK() {
    {
         NMats_ = C_left_.size(); 
         Impl_.reset(new MinimalInterface(NMats_, lr_symmetric_));
-        NMats_ = 0;
    }
+   outfile->Printf("\n SetP");
    Impl_->SetP(D_ao_);
    Impl_->GetJ(J_ao_);
    Impl_->GetK(K_ao_);

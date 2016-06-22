@@ -74,8 +74,11 @@ psi::MinimalInterface::MinimalInterface(const int NMats,
       const bool AreSymm):NPRow_(1),NPCol_(1),
                           StartRow_(0),StartCol_(0),
                           EndRow_(0),EndCol_(0),Stride_(0),NBasis_(0){
+    outfile->Printf("\n Using GTFock for ParallelJK build");
     SetUp();
+    outfile->Printf("\n SetUp is done");
     SplitProcs(NPRow_,NPCol_);
+    outfile->Printf("\n Processors are split");
     psi::Options& options = psi::Process::environment.options;
     SharedBasis primary = psi::BasisSet::pyconstruct_orbital(
     		                  psi::Process::environment.legacy_molecule(),
@@ -89,8 +92,11 @@ psi::MinimalInterface::MinimalInterface(const int NMats,
    //It appears I can have GTFock figure this value out if I hand it
    //a negative value.
    int NBlkFock=-1;
+   outfile->Printf("\n About to call PFock_create");
+   Timer pfock_create;
    PFock_create(GTBasis_,NPRow_,NPCol_,NBlkFock,IntThresh,
          NMats,AreSymm,&PFock_);
+   outfile->Printf("\n  PFock_create complete: %8.6f", pfock_create.get());
 }
 
 void psi::MinimalInterface::SetP(std::vector<SharedMatrix>& Ps){
@@ -103,6 +109,7 @@ void psi::MinimalInterface::SetP(std::vector<SharedMatrix>& Ps){
    }
    PFock_commitDenMats(PFock_);
    PFock_computeFock(GTBasis_,PFock_);
+   PFock_getStatisitics(PFock_);
    delete [] Buffer;
 }
 
