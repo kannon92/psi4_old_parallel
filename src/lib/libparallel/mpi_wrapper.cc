@@ -27,7 +27,9 @@
 
 #include "mpi_wrapper.h"
 
+#ifdef _OPENMP
 #include <omp.h>
+#endif
 #if HAVE_MPI
 namespace psi {
    void MPICommunicator::sync(const std::string& CommName) const {
@@ -63,7 +65,9 @@ namespace psi {
       //The way I understand this is that the number of openmp threads
       //is getting hard-coded to 1, and somewhere in the code people are
       //counting on this behavior...
+      #ifdef _OPENMP
       omp_set_nested(0);
+      #endif
       if (Process::environment("OMP_NUM_THREADS") == "")
       Process::environment.set_n_threads(1);
    }
