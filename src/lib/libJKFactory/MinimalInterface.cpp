@@ -109,7 +109,7 @@ void psi::MinimalInterface::SetP(std::vector<SharedMatrix>& Ps){
    }
    PFock_commitDenMats(PFock_);
    PFock_computeFock(GTBasis_,PFock_);
-   PFock_getStatisitics(PFock_);
+   PFock_getStatistics(PFock_);
    delete [] Buffer;
 }
 
