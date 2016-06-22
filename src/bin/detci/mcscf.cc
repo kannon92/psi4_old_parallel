@@ -107,13 +107,13 @@ void CIWavefunction::compute_mcscf()
     mcscf_type = "   @Parallel-MCSCF";
     outfile->Printf("\n   ==> Starting Parallel-MCSCF iterations <==\n\n");
     outfile->Printf("                           "
-                      "Total Energy        Delta E      RMS Grad   NCI\n\n");
+                      "Total Energy        Delta E      RMS Grad   NCI  Time(s)\n\n");
   }
   else{
     mcscf_type = "   @MCSCF";
     outfile->Printf("\n   ==> Starting MCSCF iterations <==\n\n");
     outfile->Printf("                        "
-                      "Total Energy        Delta E      RMS Grad   NCI\n\n");
+                      "Total Energy        Delta E      RMS Grad   NCI  Time(s)\n\n");
   }
 
 
@@ -137,6 +137,7 @@ void CIWavefunction::compute_mcscf()
 
   // Iterate
   for (int iter=1; iter<(MCSCF_Parameters_->max_iter + 1); iter++){
+  Timer mcscf_iteration;
 
     // Run CI and set quantities
     diag_h();
@@ -159,9 +160,9 @@ void CIWavefunction::compute_mcscf()
     somcscf->update(Cdocc, Cact, Cvir, opdm_, actTPDM);
     grad_rms = somcscf->gradient_rms();
 
-    outfile->Printf("%s Iter %3d:  % 5.14lf   % 1.4e  % 1.4e  %2d   %s\n", mcscf_type.c_str(), iter,
+    outfile->Printf("%s Iter %3d:  % 5.14lf   % 1.4e  % 1.4e  %2d   %s   % 1.6e\n", mcscf_type.c_str(), iter,
                     current_energy, ediff, grad_rms, Parameters_->diag_iters_taken,
-                    itertype.c_str());
+                    itertype.c_str(), mcscf_iteration.get());
 
     if (grad_rms < MCSCF_Parameters_->rms_grad_convergence &&
         (fabs(ediff) < fabs(MCSCF_Parameters_->energy_convergence)) &&
