@@ -222,6 +222,7 @@ void SOMCSCF::update(SharedMatrix Cocc, SharedMatrix Cact, SharedMatrix Cvir,
     // Make sure our ras and active spaces align
     if (!casscf_) check_ras();
     timer_on("SOMCSCF: Compute Gradient");
+    Timer Compute_Gradient;
 
     // => Build generalized inactive and active Fock matrices <= //
     std::vector<SharedMatrix>& Cl = jk_->C_left();
@@ -318,6 +319,7 @@ void SOMCSCF::update(SharedMatrix Cocc, SharedMatrix Cact, SharedMatrix Cvir,
     }
     zero_redundant(matrices_["Gradient"]);
     timer_off("SOMCSCF: Compute Gradient");
+    outfile->Printf("\n Gradient took %8.8f s", Compute_Gradient.get());
     matrices_["Precon"] = H_approx_diag();
 }
 SharedMatrix SOMCSCF::H_approx_diag()

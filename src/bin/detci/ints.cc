@@ -415,6 +415,7 @@ void CIWavefunction::transform_mcscf_ints_aodirect(bool approx_only)
     ///Step 5:  Transfer these integrals to CI and SOMCSCF for CASSCF optimization
     outfile->Printf("\n   ==> Transforming CI integrals aodirect <==\n");
     timer_on("CIWave: Parallel MCSCF integral transform");
+    Timer ParallelMCSCF_per_iter;
     if(!ints_init_)
     {
         setup_mcscf_ints_aodirect();
@@ -490,8 +491,10 @@ void CIWavefunction::transform_mcscf_ints_aodirect(bool approx_only)
     jk_->set_allow_desymmetrization(false);
     jk_->set_do_K(false);
     timer_on("CIWave: Parallel MCSCF Integral Transformation Fock build");
+    Timer integral_fock_build;
     jk_->compute();
     timer_off("CIWave: Parallel MCSCF Integral Transformation Fock build");
+    outfile->Printf("\n MCSCF Integral Trans Fock build: %8.8f s", integral_fock_build.get());
     SharedMatrix casscf_ints(new Matrix("ALL Active", nmo * nact, nact * nact));
     
     ///GOTCHA:  Chemist ordering versus physicist ordering..blah
@@ -526,7 +529,9 @@ void CIWavefunction::transform_mcscf_ints_aodirect(bool approx_only)
         }
     }
     timer_off("CIWave: Filling the (zu|xy) integrals");
+    Timer RDocc_operator;
     onel_ints_from_jk();
+    outfile->Printf("\n Restricted Docc operator takes %8.8f s", RDocc_operator.get());
     pitzer_to_ci_order_twoel(actMO, CalcInfo_->twoel_ints);
     tei_raaa_ = casscf_ints;
     tei_aaaa_ = actMO;
@@ -535,6 +540,7 @@ void CIWavefunction::transform_mcscf_ints_aodirect(bool approx_only)
     form_gmat(CalcInfo_->onel_ints, CalcInfo_->twoel_ints, CalcInfo_->gmat);
 
     timer_off("CIWave: Parallel MCSCF integral transform");
+    outfile->Printf("\n ParallelMCSCF integral transform takes %8.8f s.", ParallelMCSCF_per_iter.get());
     /// set jk options back to normal
 }
 void CIWavefunction::transform_mcscf_ints(bool approx_only) {

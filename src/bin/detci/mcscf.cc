@@ -140,7 +140,9 @@ void CIWavefunction::compute_mcscf()
   Timer mcscf_iteration;
 
     // Run CI and set quantities
+    Timer solve_ci;
     diag_h();
+    outfile->Printf("\n Solving CI takes %8.8f s", solve_ci.get());
     form_opdm();
     form_tpdm();
 
