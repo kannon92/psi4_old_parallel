@@ -162,10 +162,6 @@ void CIWavefunction::compute_mcscf()
     somcscf->update(Cdocc, Cact, Cvir, opdm_, actTPDM);
     grad_rms = somcscf->gradient_rms();
 
-    outfile->Printf("%s Iter %3d:  % 5.14lf   % 1.4e  % 1.4e  %2d   %s   % 1.6e\n", mcscf_type.c_str(), iter,
-                    current_energy, ediff, grad_rms, Parameters_->diag_iters_taken,
-                    itertype.c_str(), mcscf_iteration.get());
-
     if (grad_rms < MCSCF_Parameters_->rms_grad_convergence &&
         (fabs(ediff) < fabs(MCSCF_Parameters_->energy_convergence)) &&
         (iter > 3)){
@@ -223,6 +219,10 @@ void CIWavefunction::compute_mcscf()
 
     // Transform integrals
     transform_mcscf_integrals(!MCSCF_Parameters_->orbital_so);
+    outfile->Printf("%s Iter %3d:  % 5.14lf   % 1.4e  % 1.4e  %2d   %s   % 1.6e\n", mcscf_type.c_str(), iter,
+                    current_energy, ediff, grad_rms, Parameters_->diag_iters_taken,
+                    itertype.c_str(), mcscf_iteration.get());
+
 
   }// End MCSCF
   diis_manager->delete_diis_file();
