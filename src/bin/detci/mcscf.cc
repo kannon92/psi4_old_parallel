@@ -52,7 +52,6 @@ namespace psi { namespace detci {
 */
 void CIWavefunction::compute_mcscf()
 {
-
   tstart();
   Parameters_->print_lvl = 0;
 

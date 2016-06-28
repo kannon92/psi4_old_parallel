@@ -51,6 +51,7 @@ namespace psi { namespace detci {
 // do I really need these?  22 Jan 2008 CDS
 // #include <unistd.h>
 // #include <sys/<ctime>>
+#include <limits.h>
 
 /*** DEFINES ***/
 /*
@@ -60,7 +61,7 @@ typedef unsigned long int BIGINT;
 //typedef boost::shared_ptr<psi::detci::CIvect> SharedCIVector;
 
 #define CI_BLK_MAX 5000
-#define IOFF_MAX 50604
+#define IOFF_MAX INT_MAX
 
 #define PARM_GUESS_VEC_UNIT        0
 #define PARM_GUESS_VEC_H0_BLOCK    1

@@ -42,11 +42,12 @@
 
 #ifndef _psi_src_bin_detcas_globaldefs_h
 #define _psi_src_bin_detcas_globaldefs_h
+#include <limits.h>
 
 namespace psi { namespace detcas {
 
 #define MAX_RAS_SPACES 4
-#define IOFF_MAX       50604
+#define IOFF_MAX       INT_MAX
 #define INDEX(i,j) ( (i>j) ? (ioff[(i)] + (j)): (ioff[(j)] + (i)) )
 #define MIN0(a,b) (((a)<(b)) ? (a) : (b))
 #define MAX0(a,b) (((a)>(b)) ? (a) : (b))
