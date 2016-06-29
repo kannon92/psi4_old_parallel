@@ -74,11 +74,9 @@ psi::MinimalInterface::MinimalInterface(const int NMats,
       const bool AreSymm):NPRow_(1),NPCol_(1),
                           StartRow_(0),StartCol_(0),
                           EndRow_(0),EndCol_(0),Stride_(0),NBasis_(0){
-    outfile->Printf("\n Using GTFock for ParallelJK build");
     SetUp();
-    outfile->Printf("\n SetUp is done");
     SplitProcs(NPRow_,NPCol_);
-    outfile->Printf("\n Processors are split");
+    outfile->Printf("\n Using GTFock for ParallelJK build with NP: %d", NPRow_ * NPCol_);
     psi::Options& options = psi::Process::environment.options;
     SharedBasis primary = psi::BasisSet::pyconstruct_orbital(
     		                  psi::Process::environment.legacy_molecule(),
@@ -92,25 +90,42 @@ psi::MinimalInterface::MinimalInterface(const int NMats,
    //It appears I can have GTFock figure this value out if I hand it
    //a negative value.
    int NBlkFock=-1;
-   outfile->Printf("\n About to call PFock_create");
    Timer pfock_create;
-   PFock_create(GTBasis_,NPRow_,NPCol_,NBlkFock,IntThresh,
+   int return_flag = (int) PFock_create(GTBasis_,NPRow_,NPCol_,NBlkFock,IntThresh,
          NMats,AreSymm,&PFock_);
-   outfile->Printf("\n  PFock_create complete: %8.6f", pfock_create.get());
+   if(return_flag != 0)
+   {
+       
+       outfile->Printf("\n Something happened during PFock_create"); 
+       outfile->Printf("\n GTFock error is %d", return_flag);
+       outfile->Printf("\n NMats: %d AreSymm: %d", NMats, AreSymm);
+       throw PSIEXCEPTION("GTFock threw a failure in PFock_create. Check error and log.");
+   }
 }
 
 void psi::MinimalInterface::SetP(std::vector<SharedMatrix>& Ps){
-   PFock_setNumDenMat(Ps.size(),PFock_);
+   int return_flag = 0;
+   return_flag = (int)PFock_setNumDenMat(Ps.size(),PFock_);
+   if(return_flag != 0)
+   {
+        outfile->Printf("\n PFock_setNumDenMat gave an error.");
+        throw PSIEXCEPTION("PFock_setNumDenMat is FUBAR");
+   }
    double* Buffer;
    for(int i=0;i<Ps.size();i++){
       MyBlock(&Buffer,Ps[i]);
-      PFock_putDenMat(StartRow_,EndRow_,
-                      StartCol_,EndCol_,Stride_,Buffer,i,PFock_);
+      return_flag = (int)PFock_putDenMat(StartRow_,EndRow_,
+                           StartCol_,EndCol_,Stride_,Buffer,i,PFock_);
    }
-   PFock_commitDenMats(PFock_);
-   PFock_computeFock(GTBasis_,PFock_);
+   return_flag = (int)PFock_commitDenMats(PFock_);
+   return_flag = (int)PFock_computeFock(GTBasis_,PFock_);
    PFock_getStatistics(PFock_);
    delete [] Buffer;
+   if(return_flag != 0)
+   {
+        outfile->Printf("\n SetP (driver for GTFock failed");
+        throw PSIEXCEPTION("PSI4 failed in SetP due to GTFock");
+   }
 }
 
 void psi::MinimalInterface::GenGetCall(

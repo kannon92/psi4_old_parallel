@@ -448,6 +448,7 @@ static PFockStatus_t create_FD_GArrays (PFock_t pfock)
     for (int i = 0; i < pfock->nprocs; i++) {
         map[i] = i;
     }
+
     map[pfock->nprocs] = 0;
     dims[0] = pfock->nprocs;
     dims[1] = sizeD1;
@@ -484,12 +485,20 @@ static PFockStatus_t create_FD_GArrays (PFock_t pfock)
     }
     sprintf(str, "D2_0");
     pfock->ga_D2[0] = NGA_Create_irreg(C_DBL, 2, dims, str, block, map);
+    if(pfock->ga_D2[0] == 0)
+    {
+        PFOCK_PRINTF(1, "GA allocation failed on ga_D2 first");
+        return PFOCK_STATUS_ALLOC_FAILED;
+    }
     for (int i = 0; i < pfock->max_numdmat2; i++) {
         if (i != 0) {
             sprintf(str, "D2_%d", i);
             pfock->ga_D2[i] = GA_Duplicate(pfock->ga_D2[0], str);
         }
         if (pfock->ga_D2[i] == 0) {
+            int my_rank;
+            MPI_Comm_rank(MPI_COMM_WORLD, &my_rank);
+            printf("\n GA_D2 failed on %d D with P%d", i, my_rank);
             PFOCK_PRINTF(1, "GA allocation failed\n");
             return PFOCK_STATUS_ALLOC_FAILED;
         }
@@ -1055,7 +1064,10 @@ PFockStatus_t PFock_setNumDenMat(int numdmat, PFock_t pfock)
                       " after PFock_commitDenMats() is called.\n");
         return PFOCK_STATUS_EXECUTION_FAILED;
     }
-    if (numdmat <= 0 || numdmat > pfock->max_numdmat) {
+    //if (numdmat <= 0 || numdmat > pfock->max_numdmat) {
+    //if(numdmat <= 0 || numdmat > pfock->max_numdmat2) {
+    if(numdmat <= 0 || numdmat > pfock->max_numdmat){
+        printf("\n numdmat: %d > max_numdmat: %d", numdmat, pfock->max_numdmat);
         PFOCK_PRINTF(1, "Invalid number of density matrices\n");
         return PFOCK_STATUS_INVALID_VALUE;
     }
@@ -1063,7 +1075,8 @@ PFockStatus_t PFock_setNumDenMat(int numdmat, PFock_t pfock)
     pfock->num_dmat = numdmat;
     pfock->num_dmat2 = numdmat2;
     
-    return PFOCK_STATUS_EXECUTION_FAILED;
+    //return PFOCK_STATUS_EXECUTION_FAILED;
+    return PFOCK_STATUS_SUCCESS;
 }
 
 
