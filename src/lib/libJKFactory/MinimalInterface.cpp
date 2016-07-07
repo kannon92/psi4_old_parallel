@@ -101,6 +101,7 @@ psi::MinimalInterface::MinimalInterface(const int NMats,
        outfile->Printf("\n NMats: %d AreSymm: %d", NMats, AreSymm);
        throw PSIEXCEPTION("GTFock threw a failure in PFock_create. Check error and log.");
    }
+   outfile->Printf("\n PFock_create is complete.  Took %8.6f s. ", pfock_create.get());
 }
 
 void psi::MinimalInterface::SetP(std::vector<SharedMatrix>& Ps){
