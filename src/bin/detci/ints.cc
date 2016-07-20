@@ -552,7 +552,7 @@ void CIWavefunction::transform_mcscf_ints_aodirect(bool approx_only)
     jk_->compute();
     timer_off("CIWave: Parallel MCSCF Integral Transformation Fock build");
     outfile->Printf("\n MCSCF Integral Trans Fock build: %8.8f s", integral_fock_build.get());
-    SharedMatrix casscf_ints(new Matrix("ALL Active", nmo_with_froze * nact, nact * nact));
+    SharedMatrix casscf_ints(new Matrix("ALL Active", nmo_ * nact, nact * nact));
     
     ///Step 3:  Fill the integrals for SOSCF in_core
     ///TODO: Figure out WTF is going on with ordering.  
