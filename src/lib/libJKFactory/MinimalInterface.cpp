@@ -76,7 +76,7 @@ psi::MinimalInterface::MinimalInterface(const int NMats,
                           EndRow_(0),EndCol_(0),Stride_(0),NBasis_(0){
     SetUp();
     SplitProcs(NPRow_,NPCol_);
-    outfile->Printf("\n Using GTFock for ParallelJK build with NP: %d", NPRow_ * NPCol_);
+    outfile->Printf("\n Using GTFock for ParallelJK build with %d MPI processes and %d omp threads", NPRow_ * NPCol_, omp_get_max_threads());
     psi::Options& options = psi::Process::environment.options;
     SharedBasis primary = psi::BasisSet::pyconstruct_orbital(
     		                  psi::Process::environment.legacy_molecule(),
