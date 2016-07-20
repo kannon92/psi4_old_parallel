@@ -223,6 +223,13 @@ void CIWavefunction::compute_mcscf()
                     itertype.c_str(), mcscf_iteration.get());
 
 
+    if(MCSCF_Parameters_->mcscf_type == "CONV_PARALLEL")
+    {
+        if(get_orbitals("FZC")->ncol() > 0)
+        {
+            throw PSIEXCEPTION("Frozen core is not implemented for AO_DIRECT, yet");
+        }
+    }
   }// End MCSCF
   diis_manager->delete_diis_file();
   diis_manager.reset();

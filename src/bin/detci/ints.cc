@@ -425,7 +425,9 @@ void CIWavefunction::transform_mcscf_ints_aodirect(bool approx_only)
     SharedMatrix Ca_sym = this->Ca();
     int nmo = this->nmo();
     int nso = this->nso();
+    int nmo_no_froze = nmo_ - CalcInfo_->frozen_docc.sum() - CalcInfo_->frozen_uocc.sum();
     SharedMatrix Call(new Matrix(nso_, nmo_));
+    SharedMatrix Call_no_froze(new Matrix(nso_, nmo_no_froze));
     SharedMatrix CAct(new Matrix(nso_, nact));
 
     // Transform from the SO to the AO basis for the C matrix.
@@ -438,23 +440,88 @@ void CIWavefunction::transform_mcscf_ints_aodirect(bool approx_only)
 
             if (!nso_) continue;
 
-            C_DGEMV('N',nao,nso,1.0,AO2SO_->pointer(h)[0],nso,&Ca_sym->pointer(h)[0][i],nmopi_[h],0.0,&Call->pointer()[0][index],nmo);
+            C_DGEMV('N',nao,nso,1.0,AO2SO_->pointer(h)[0],nso,&Ca_sym->pointer(h)[0][i],nmopi_[h],0.0,&Call->pointer()[0][index],nmo_);
 
             index += 1;
         }
-
     }
     timer_off("CIWave: Transform C matrix from SO to AO");
+    int nmo_with_froze = nmo_ - CalcInfo_->frozen_docc.sum() - CalcInfo_->frozen_uocc.sum();
     std::vector<int> active_abs(nact, 0);
-    std::vector<int> correlated_mos(nmo, 0);
+    std::vector<int> correlated_mos(nmo_with_froze, 0);
+    std::vector<int> absolute_mo(nmo_with_froze, 0);
     int orbnum = 0;
-    for (int h = 0, cinum = 0, orbnum = 0; h < CalcInfo_->nirreps; h++) {
+    int orb_start = 0;
+    int frozen = 0;
+    for (int h = 0, cinum = 0, orbnum = 0, orbital_offset = 0; h < CalcInfo_->nirreps; h++) {
+        orbnum += CalcInfo_->frozen_docc[h];
+        for(int m = 0; m < CalcInfo_->rstr_docc[h]; m++) {
+            correlated_mos[cinum] = orbnum - CalcInfo_->frozen_docc.sum();
+            absolute_mo[cinum++] = orbnum++;
+        }
+        orbnum += CalcInfo_->ci_orbs[h];
+        orbnum += CalcInfo_->dropped_uocc[h];
+    }
+    for (int h = 0, cinum = 0, orbnum = 0, orbital_offset = 0; h < CalcInfo_->nirreps; h++) {
         orbnum += CalcInfo_->dropped_docc[h];
-        for (int i = 0; i < CalcInfo_->ci_orbs[h]; i++) {
+        int active_start = CalcInfo_->rstr_docc.sum();
+        for(int m = 0; m < CalcInfo_->ci_orbs[h]; m++) {
+            correlated_mos[active_start + cinum] = orbnum - CalcInfo_->frozen_docc.sum();
+            absolute_mo[active_start + cinum++] = orbnum++;
+        }
+        orbnum += CalcInfo_->dropped_uocc[h];
+    }
+    for (int h = 0, cinum = 0, orbnum = 0, orbital_offset = 0; h < CalcInfo_->nirreps; h++) {
+        orbnum += CalcInfo_->dropped_docc[h];
+        int ruocc_start = CalcInfo_->ci_orbs.sum();
+        ruocc_start += CalcInfo_->rstr_docc.sum();
+        orbnum += CalcInfo_->ci_orbs[h];
+        for(int m = 0; m < CalcInfo_->dropped_uocc[h]; m++) {
+            correlated_mos[ruocc_start + cinum] = orbnum - CalcInfo_->frozen_docc.sum();
+            absolute_mo[ruocc_start + cinum++] = orbnum++;
+        }
+    }
+    for (int h = 0, cinum = 0, orbnum = 0, orbital_offset = 0; h < CalcInfo_->nirreps; h++) {
+        orbnum += CalcInfo_->dropped_docc[h];
+        for (int u = 0; u < CalcInfo_->ci_orbs[h]; u++) {
             active_abs[cinum++] = orbnum++;
         }
         orbnum += CalcInfo_->dropped_uocc[h];
     }
+    for(int count = 0; count < nmo_with_froze; count++)
+    {
+        Call_no_froze->set_column(0, correlated_mos[count], Call->get_column(0,absolute_mo[count]));
+    }
+    //Call_no_froze = Call;
+
+    //int orbital_offset = 0;
+    //for(int h = 0, offset = 0; h < CalcInfo_->nirreps; h++) {
+    // //   orb_start += CalcInfo_->frozen_docc[h];
+    //    for(int m = 0; m < CalcInfo_->rstr_docc[h]; m++) {
+    //        absolute_mo[offset++] = orb_start++;
+    //    }
+    ////    orb_start += CalcInfo_->rstr_docc[h];
+    //    for(int m = 0; m < CalcInfo_->ci_orbs[h]; m++) {
+    //        absolute_mo[offset++] = orb_start++;
+    //    }
+    ////    orb_start += CalcInfo_->ci_orbs[h];
+    //    for(int m = 0; m < CalcInfo_->dropped_uocc[h]; m++) {
+    //        absolute_mo[offset++] = orb_start++;
+    //    }
+    //    orb_start += nmopi_[h];
+    //}
+
+    outfile->Printf("\n absolute_mo \n");
+    for(auto abs : absolute_mo)
+        outfile->Printf(" %d ", abs);
+    outfile->Printf("\n active_abs \n");
+    for(auto act : correlated_mos)
+        outfile->Printf(" %d ", act);
+    //outfile->Printf("\n correlated_mos \n");
+    //for(auto corr : correlated_mos)
+    //    outfile->Printf(" %d ", corr);
+
+    
     for(size_t v = 0; v < nact; v++){
             SharedVector Call_vec = Call->get_column(0, active_abs[v]);
             CAct->set_column(0, v, Call_vec);
@@ -495,7 +562,7 @@ void CIWavefunction::transform_mcscf_ints_aodirect(bool approx_only)
     jk_->compute();
     timer_off("CIWave: Parallel MCSCF Integral Transformation Fock build");
     outfile->Printf("\n MCSCF Integral Trans Fock build: %8.8f s", integral_fock_build.get());
-    SharedMatrix casscf_ints(new Matrix("ALL Active", nmo * nact, nact * nact));
+    SharedMatrix casscf_ints(new Matrix("ALL Active", nmo_with_froze * nact, nact * nact));
     
     ///GOTCHA:  Chemist ordering versus physicist ordering..blah
     timer_on("CIWave: Filling the (pu|xy) integrals");
@@ -505,10 +572,10 @@ void CIWavefunction::transform_mcscf_ints_aodirect(bool approx_only)
         int j = D_vec[D_tasks].second[1];
         SharedMatrix J = jk_->J()[D_tasks];
         SharedMatrix half_trans = Matrix::triplet(Call, J, CAct, true, false, false);
-        for(size_t p = 0; p < nmo; p++){
+        for(size_t p = 0; p < nmo_with_froze; p++){
             for(size_t q = 0; q < nact; q++){
-                casscf_ints->set(p * nact + q, i * nact + j, half_trans->get(p, q));
-                casscf_ints->set(p * nact + q, j * nact + i, half_trans->get(p, q));
+                casscf_ints->set(p * nact + q, i * nact + j, half_trans->get(absolute_mo[p], q));
+                casscf_ints->set(p * nact + q, j * nact + i, half_trans->get(absolute_mo[p], q));
             }
         }
     }
@@ -520,14 +587,16 @@ void CIWavefunction::transform_mcscf_ints_aodirect(bool approx_only)
     SharedMatrix actMO(new Matrix("ALL Active", nact * nact, nact * nact));
     timer_on("CIWave: Filling the (zu|xy) integrals");
     for(int u = 0; u < nact; u++){
+        int u_offset = CalcInfo_->dropped_docc.sum();
         for(int v = 0; v < nact; v++){
             for(int x = 0; x < nact; x++){
                 for(int y = 0; y < nact; y++){
-                    actMO->set(u * nact + v, x * nact + y, casscf_ints->get(active_abs[u] * nact + v, x * nact + y));
+                    actMO->set(u * nact + v, x * nact + y, casscf_ints->get(active_abs[u]* nact + v, x * nact + y));
                 }
             }
         }
     }
+    actMO->print();
     timer_off("CIWave: Filling the (zu|xy) integrals");
     Timer RDocc_operator;
     onel_ints_from_jk();
@@ -541,6 +610,7 @@ void CIWavefunction::transform_mcscf_ints_aodirect(bool approx_only)
 
     timer_off("CIWave: Parallel MCSCF integral transform");
     outfile->Printf("\n ParallelMCSCF integral transform takes %8.8f s.", ParallelMCSCF_per_iter.get());
+        
     /// set jk options back to normal
 }
 void CIWavefunction::transform_mcscf_ints(bool approx_only) {

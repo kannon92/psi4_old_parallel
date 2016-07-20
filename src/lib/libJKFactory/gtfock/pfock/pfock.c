@@ -496,8 +496,11 @@ static PFockStatus_t create_FD_GArrays (PFock_t pfock)
             pfock->ga_D2[i] = GA_Duplicate(pfock->ga_D2[0], str);
         }
         if (pfock->ga_D2[i] == 0) {
+            GA_Print_stats();
+            printf("\n GA_Inquire_memory(): %lu", GA_Inquire_memory());
             int my_rank;
             MPI_Comm_rank(MPI_COMM_WORLD, &my_rank);
+            
             printf("\n GA_D2 failed on %d D with P%d", i, my_rank);
             PFOCK_PRINTF(1, "GA allocation failed\n");
             return PFOCK_STATUS_ALLOC_FAILED;

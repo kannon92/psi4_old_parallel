@@ -137,8 +137,13 @@ void psi::MinimalInterface::GenGetCall(
    double* Block=new double[nrows*ncols];
    for(int i=0;i<JorK.size();i++){
       memset(Block,0.0,sizeof(double)*nrows*ncols);
-      PFock_getMat(PFock_,(PFockMatType_t)value,i,StartRow_,
+      int return_flag = (int) PFock_getMat(PFock_,(PFockMatType_t)value,i,StartRow_,
                   EndRow_,StartCol_,EndCol_,Stride_,Block);
+      if(return_flag != 0)
+      {
+        outfile->Printf("\n PFock_getMat failed");
+        throw PSIEXCEPTION("PSI4 failed in PFock_getMat due to GTFOCK");
+      }
       Gather(JorK[i],Block);
    }
    delete [] Block;

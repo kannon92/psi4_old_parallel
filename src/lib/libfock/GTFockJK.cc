@@ -27,6 +27,7 @@
 
 #include "jk.h"
 #include "../libJKFactory/MinimalInterface.h"
+#include <psi4-dec.h>
 namespace psi {
 
 ///Blank constructor(similar to all other JK)
@@ -53,8 +54,12 @@ void GTFockJK::compute_JK() {
         NMats_ = C_left_.size(); 
         Impl_.reset(new MinimalInterface(NMats_, lr_symmetric_));
    }
+   Timer SetP_time;
    Impl_->SetP(D_ao_);
+   printf("\n SetP takes %8.8f s.", SetP_time.get());
+   Timer GetJK;
    Impl_->GetJ(J_ao_);
    Impl_->GetK(K_ao_);
+   outfile->Printf("\n Get J and K %8.8f s.", GetJK.get());
 }
 }
