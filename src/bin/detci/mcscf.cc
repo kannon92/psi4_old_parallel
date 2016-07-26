@@ -142,8 +142,10 @@ void CIWavefunction::compute_mcscf()
     Timer solve_ci;
     diag_h();
     outfile->Printf("\n Solving CI takes %8.8f s", solve_ci.get());
+    Timer form_pdm;
     form_opdm();
     form_tpdm();
+    outfile->Printf("\n Computing PDM took %8.4f s", form_pdm.get());
 
     current_energy = Process::environment.globals["MCSCF TOTAL ENERGY"];
     ediff = current_energy - old_energy;
@@ -158,7 +160,9 @@ void CIWavefunction::compute_mcscf()
          
         somcscf->set_eri_tensors(tei_aaaa_, tei_raaa_);
     }
+    Timer soscf_update;
     somcscf->update(Cdocc, Cact, Cvir, opdm_, actTPDM);
+    outfile->Printf("\n MCSCF: Update takes %8.4f s.", soscf_update.get());
     grad_rms = somcscf->gradient_rms();
 
     if (grad_rms < MCSCF_Parameters_->rms_grad_convergence &&
@@ -175,6 +179,7 @@ void CIWavefunction::compute_mcscf()
                            (iter >= 2))
                            || (itertype == "SOMCSCF"));
 
+    Timer time_solve;
     if (do_so_orbital && MCSCF_Parameters_->orbital_so){
       itertype = "SOMCSCF";
       xstep = somcscf->solve(3, 1.e-10, false);
@@ -183,6 +188,7 @@ void CIWavefunction::compute_mcscf()
       itertype = "APPROX";
       xstep = somcscf->approx_solve();
     }
+    outfile->Printf("\n SOMCSCF Solve takes %8.4f s", time_solve.get());
 
     // Scale x if needed
     double maxx = 0.0;
@@ -213,7 +219,9 @@ void CIWavefunction::compute_mcscf()
       itertype = "APPROX, DIIS";
     }
 
+    Timer Ck_time;
     SharedMatrix new_orbs = somcscf->Ck(original_orbs, x);
+    outfile->Printf("\n Ck timings take %8.4f s.", Ck_time.get());
     set_orbitals("ROT", new_orbs);
 
     // Transform integrals
