@@ -1712,6 +1712,71 @@ def run_scf_gradient(name, **kwargs):
     optstash.restore()
     return ref_wfn
 
+def run_scf_hessian(name, **kwargs):
+    """Function encoding sequence of PSI module calls for
+    an SCF hessian calculation.
+
+    """
+    optstash = proc_util.scf_set_reference_local(name)
+
+    # Bypass the scf call if a reference wavefunction is given
+    ref_wfn = kwargs.get('ref_wfn', None)
+    if ref_wfn is None:
+        ref_wfn = run_scf(name, **kwargs)
+
+    badref = psi4.get_option('SCF', 'REFERENCE') in ['UHF', 'ROHF', 'CUHF', 'RKS', 'UKS']
+    badint = psi4.get_option('SCF', 'SCF_TYPE') in [ 'CD', 'OUT_OF_CORE']
+    if badref or badint:
+        raise ValidationError("Only RHF Hessians are currently implemented. SCF_TYPE either CD or OUT_OF_CORE not supported")
+    H = psi4.scfhess(ref_wfn)
+    ref_wfn.set_hessian(H)
+
+    # Temporary freq code.  To be replaced with proper frequency analysis later...
+    import numpy as np
+
+    mol = ref_wfn.molecule()
+    natoms = mol.natom()
+    masses = np.zeros(natoms)
+
+    for atom in range(natoms):
+        masses[atom] = mol.mass(atom)
+
+    m = np.repeat( np.divide(1.0, np.sqrt(masses)), 3)
+    mwhess = np.einsum('i,ij,j->ij', m, H, m)
+
+    # Are we linear?
+    if mol.get_full_point_group() in [ "C_inf_v", "D_inf_h" ]:
+        nexternal = 5
+    else:
+        nexternal = 6
+
+    fcscale = psi_hartree2J / (psi_bohr2m * psi_bohr2m * psi_amu2kg);
+    fc = fcscale * np.linalg.eigvalsh(mwhess)
+    # Sort by magnitude of the force constants, to project out rot/vib
+    ordering = np.argsort(np.abs(fc))
+    projected = fc[ordering][nexternal:]
+    freqs = np.sqrt(np.abs(projected))
+    freqs *= 1.0 / (2.0 * np.pi * psi_c * 100.0)
+    freqs[projected < 0] *= -1
+    freqs.sort()
+
+    freqvec = psi4.Vector.from_array(freqs)
+    ref_wfn.set_frequencies(freqvec)
+    # End of temporary freq hack.  Remove me later! 
+
+    # Write Hessian out.  This probably needs a more permanent home, too.
+    # This is a drop-in replacement for the code that lives in findif
+    if psi4.get_option('FINDIF', 'HESSIAN_WRITE'):
+        molname = ref_wfn.molecule().name()
+        prefix = psi4.get_writer_file_prefix(molname)
+        with open(prefix+".hess", 'w') as fp:
+            fp.write("%5d%5d\n" % (natoms, 6*natoms))
+            for row in np.reshape(H, (-1, 3)):
+                fp.write("%20.10f%20.10f%20.10f\n" % tuple(row))
+
+    optstash.restore()
+    return ref_wfn
+
 
 def run_libfock(name, **kwargs):
     """Function encoding sequence of PSI module calls for
@@ -2001,6 +2066,7 @@ def run_dft_property(name, **kwargs):
     for prop in properties:
         oe.add(prop.upper())
     oe.compute()
+    scf_wfn.oeprop = oe
 
     optstash.restore()
     return scf_wfn
@@ -2026,6 +2092,7 @@ def run_scf_property(name, **kwargs):
     for prop in properties:
         oe.add(prop.upper())
     oe.compute()
+    scf_wfn.oeprop = oe
 
     optstash.restore()
     return scf_wfn
@@ -2210,6 +2277,7 @@ def run_dfmp2_property(name, **kwargs):
     for prop in properties:
         oe.add(prop.upper())
     oe.compute()
+    dfmp2_wfn.oeprop = oe
 
     optstash.restore()
     return dfmp2_wfn
@@ -2267,6 +2335,7 @@ def run_detci_property(name, **kwargs):
 
     # Compute "the" CI density
     oe.compute()
+    ciwfn.oeprop = oe
 
     # If we have more than one root, compute all data
     if nroots > 1:
@@ -2645,7 +2714,7 @@ def run_dmrgscf(name, **kwargs):
     """
     optstash = p4util.OptionsState(
         ['SCF', 'SCF_TYPE'],
-        ['DMRG', 'DMRG_CASPT2'])
+        ['DMRG', 'DMRG_CASPT2_CALC'])
 
     # Bypass the scf call if a reference wavefunction is given
     ref_wfn = kwargs.get('ref_wfn', None)
@@ -2656,7 +2725,7 @@ def run_dmrgscf(name, **kwargs):
     proc_util.check_iwl_file_from_scf_type(psi4.get_option('SCF', 'SCF_TYPE'), ref_wfn)
 
     if 'CASPT2' in name.upper():
-        psi4.set_local_option("DMRG", "DMRG_CASPT2", True) 
+        psi4.set_local_option("DMRG", "DMRG_CASPT2_CALC", True) 
 
     dmrg_wfn = psi4.dmrg(ref_wfn)
     optstash.restore()
@@ -2671,7 +2740,7 @@ def run_dmrgci(name, **kwargs):
     """
     optstash = p4util.OptionsState(
         ['SCF', 'SCF_TYPE'],
-        ['DMRG', 'DMRG_MAX_ITER'])
+        ['DMRG', 'DMRG_SCF_MAX_ITER'])
 
     # Bypass the scf call if a reference wavefunction is given
     ref_wfn = kwargs.get('ref_wfn', None)
@@ -2681,7 +2750,7 @@ def run_dmrgci(name, **kwargs):
     # Ensure IWL files have been written
     proc_util.check_iwl_file_from_scf_type(psi4.get_option('SCF', 'SCF_TYPE'), ref_wfn)
 
-    psi4.set_local_option('DMRG', 'DMRG_MAX_ITER', 1)
+    psi4.set_local_option('DMRG', 'DMRG_SCF_MAX_ITER', 1)
 
     dmrg_wfn = psi4.dmrg(ref_wfn)
     optstash.restore()
@@ -2809,7 +2878,7 @@ def run_sapt(name, **kwargs):
     if do_delta_mp2:
         select_mp2(name, ref_wfn=monomerB_wfn, **kwargs)
         mp2_corl_interaction_e -= psi4.get_variable('MP2 CORRELATION ENERGY')
-        psi4.set_variable('SA MP2 CORRELATION ENERGY', mp2_corl_interaction_e)
+        psi4.set_variable('SAPT MP2 CORRELATION ENERGY', mp2_corl_interaction_e)
     psi4.set_global_option('DF_INTS_IO', df_ints_io)
 
     psi4.IO.change_file_namespace(p4const.PSIF_SAPT_MONOMERA, 'monomerA', 'dimer')
@@ -2818,7 +2887,7 @@ def run_sapt(name, **kwargs):
     psi4.IO.set_default_namespace('dimer')
     psi4.set_local_option('SAPT', 'E_CONVERGENCE', 10e-10)
     psi4.set_local_option('SAPT', 'D_CONVERGENCE', 10e-10)
-    if name == 'sapt0':
+    if name in ['sapt0', 'ssapt0']:
         psi4.set_local_option('SAPT', 'SAPT_LEVEL', 'SAPT0')
     elif name == 'sapt2':
         psi4.set_local_option('SAPT', 'SAPT_LEVEL', 'SAPT2')
@@ -2853,8 +2922,11 @@ def run_sapt(name, **kwargs):
     from qcdb.psivardefs import sapt_psivars
     p4util.expand_psivars(sapt_psivars())
     optstash.restore()
+    for term in ['ELST', 'EXCH', 'IND', 'DISP', 'TOTAL']:
+        psi4.set_variable(' '.join(['SAPT', term, 'ENERGY']), 
+            psi4.get_variable(' '.join([name.upper(), term, 'ENERGY'])))
+    psi4.set_variable('CURRENT ENERGY', psi4.get_variable('SAPT TOTAL ENERGY'))
 
-    #return e_sapt
     return dimer_wfn
 
 
@@ -3575,6 +3647,7 @@ def run_detcas(name, **kwargs):
     oeprop.set_title(name.upper())
     oeprop.add("DIPOLE")
     oeprop.compute()
+    ciwfn.oeprop = oeprop
     psi4.set_variable("CURRENT DIPOLE X", psi4.get_variable(name.upper() + " DIPOLE X"))
     psi4.set_variable("CURRENT DIPOLE Y", psi4.get_variable(name.upper() + " DIPOLE Y"))
     psi4.set_variable("CURRENT DIPOLE Z", psi4.get_variable(name.upper() + " DIPOLE Z"))
