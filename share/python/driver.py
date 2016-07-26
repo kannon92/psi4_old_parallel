@@ -280,11 +280,13 @@ def energy(name, **kwargs):
     +-------------------------+---------------------------------------------------------------------------------------------------------------+
     | dmrg-scf                | density matrix renormalization group SCF :ref:`[manual] <sec:dmrg>`                                           |
     +-------------------------+---------------------------------------------------------------------------------------------------------------+
-    | dmrg-caspt2             | density matrix renormalization group CASPT2 :ref:`[manual] <sec:dmrg>`                                           |
+    | dmrg-caspt2             | density matrix renormalization group CASPT2 :ref:`[manual] <sec:dmrg>`                                        |
     +-------------------------+---------------------------------------------------------------------------------------------------------------+
     | dmrg-ci                 | density matrix renormalization group CI :ref:`[manual] <sec:dmrg>`                                            |
     +-------------------------+---------------------------------------------------------------------------------------------------------------+
     | sapt0                   | 0th-order symmetry adapted perturbation theory (SAPT) :ref:`[manual] <sec:sapt>`                              |
+    +-------------------------+---------------------------------------------------------------------------------------------------------------+
+    | ssapt0                  | 0th-order SAPT with special exchange scaling :ref:`[manual] <sec:sapt>`                                       |
     +-------------------------+---------------------------------------------------------------------------------------------------------------+
     | sapt2                   | 2nd-order SAPT, traditional definition :ref:`[manual] <sec:sapt>`                                             |
     +-------------------------+---------------------------------------------------------------------------------------------------------------+
@@ -1581,8 +1583,8 @@ def frequency(name, **kwargs):
         :math:`a_1`, requesting only the totally symmetric modes.
         ``-1`` indicates a full frequency calculation.
 
-    .. note:: Analytic hessians are not available. Frequencies will proceed through
-        finite differences according to availability of gradients or energies.
+    .. note:: Analytic hessians are only available for RHF. For all other methods, Frequencies will
+        proceed through finite differences according to availability of gradients or energies.
 
     .. _`table:freq_gen`:
 
