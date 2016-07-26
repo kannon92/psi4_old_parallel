@@ -190,6 +190,7 @@ void CIWavefunction::compute_mcscf()
     }
     outfile->Printf("\n SOMCSCF Solve takes %8.4f s", time_solve.get());
 
+    Timer scale_x;
     // Scale x if needed
     double maxx = 0.0;
     for (int h=0; h<xstep->nirrep(); ++h) {
@@ -199,6 +200,7 @@ void CIWavefunction::compute_mcscf()
             }
         }
     }
+    outfile->Printf("\n Scale_x takes %8.4f s", scale_x.get());
 
     if (maxx > MCSCF_Parameters_->max_rot){
       xstep->scale((MCSCF_Parameters_->max_rot)/maxx);
@@ -208,16 +210,20 @@ void CIWavefunction::compute_mcscf()
     x->add(xstep);
 
     // Do we add diis?
+    Timer diis_entry;
     if (iter > MCSCF_Parameters_->diis_start){
       diis_manager->add_entry(2, xstep.get(), x.get());
       diis_count++;
     }
+    outfile->Printf("\n Adding entry in DIIS takes %8.4f s", diis_entry.get());
 
     // Do we do diis?
+    Timer diis_extra;
     if ((itertype == "APPROX") && !(diis_count % MCSCF_Parameters_->diis_freq) && (iter > MCSCF_Parameters_->diis_start)){
       diis_manager->extrapolate(1, x.get());
       itertype = "APPROX, DIIS";
     }
+    outfile->Printf("\n Extrapolatating with DIIS takes %8.4f s", diis_extra.get());
 
     Timer Ck_time;
     SharedMatrix new_orbs = somcscf->Ck(original_orbs, x);
