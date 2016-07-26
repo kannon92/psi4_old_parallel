@@ -20,10 +20,15 @@ set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -m64")
 if(${CMAKE_C_COMPILER_ID} STREQUAL "Intel")
   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -xHost -fasm-blocks -qno-offload")
 endif() 
-set(JK_GA_LIBS "/home/kannon/src/GTFock/GAlib_infiniband/lib64/libga.a" 
-"/home/kannon/src/GTFock/GAlib_infiniband/lib64/libarmci.a"
+#set(JK_GA_LIBS 
+#"/home/hann965/src/nwchem/src/tools/install/lib/libga.a"
+#"/home/hann965/src/nwchem/src/tools/install/lib/libarmci.a"
+#)
+set(JK_GA_LIBS 
+"/home/hann965/src/gtfock/global_install/lib/libga.a"
+"/home/hann965/src/gtfock/global_install/lib/libarmci.a"
 )
-set(JK_GA_INC "/home/kannon/src/GTFock/GAlib_infiniband/include")
+set(JK_GA_INC "/home/hann965/src/gtfock/global_install/include")
 
 add_subdirectory(pfock)
 add_subdirectory(libcint)

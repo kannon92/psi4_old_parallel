@@ -11,6 +11,8 @@ set {
     reference       rhf
     restricted_docc [1, 0, 0, 0]
     active          [3, 0, 1, 2] 
+    scf_type        gtfock
+    mcscf_type      conv_parallel
 }
 
 casscf_energy = energy('casscf')
