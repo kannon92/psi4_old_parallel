@@ -464,10 +464,10 @@ static PFockStatus_t create_FD_GArrays (PFock_t pfock)
             sprintf(str, "D1_%d", i);
             pfock->ga_D1[i] = GA_Duplicate(pfock->ga_D1[0], str);
         }
-        if (pfock->ga_D1[i] == 0) {
-            PFOCK_PRINTF(1, "GA allocation failed\n");
-            return PFOCK_STATUS_ALLOC_FAILED;
-        }
+        //if (pfock->ga_D1[i] == 0) {
+        //    PFOCK_PRINTF(1, "GA allocation failed\n");
+        //    return PFOCK_STATUS_ALLOC_FAILED;
+        //}
     }
         
     // for D2
@@ -488,7 +488,7 @@ static PFockStatus_t create_FD_GArrays (PFock_t pfock)
     if(pfock->ga_D2[0] == 0)
     {
         PFOCK_PRINTF(1, "GA allocation failed on ga_D2 first");
-        return PFOCK_STATUS_ALLOC_FAILED;
+    //    return PFOCK_STATUS_ALLOC_FAILED;
     }
     for (int i = 0; i < pfock->max_numdmat2; i++) {
         if (i != 0) {
@@ -503,7 +503,7 @@ static PFockStatus_t create_FD_GArrays (PFock_t pfock)
             
             printf("\n GA_D2 failed on %d D with P%d", i, my_rank);
             PFOCK_PRINTF(1, "GA allocation failed\n");
-            return PFOCK_STATUS_ALLOC_FAILED;
+        //    return PFOCK_STATUS_ALLOC_FAILED;
         }
     }
     
@@ -529,7 +529,7 @@ static PFockStatus_t create_FD_GArrays (PFock_t pfock)
         }
         if (pfock->ga_D3[i] == 0) {
             PFOCK_PRINTF(1, "GA allocation failed\n");
-            return PFOCK_STATUS_ALLOC_FAILED;
+         //   return PFOCK_STATUS_ALLOC_FAILED;
         }
     }
 
@@ -554,7 +554,7 @@ static PFockStatus_t create_FD_GArrays (PFock_t pfock)
             pfock->ga_F2[i] == 0 ||
             pfock->ga_F3[i] == 0) {
             PFOCK_PRINTF(1, "GA allocation failed\n");
-            return PFOCK_STATUS_ALLOC_FAILED;
+        //    return PFOCK_STATUS_ALLOC_FAILED;
         }
     }
     
