@@ -62,6 +62,7 @@ procedures = {
             'qchf'          : proc.run_qchf,
             'ccd'           : proc.run_dfocc,
             'sapt0'         : proc.run_sapt,
+            'ssapt0'        : proc.run_sapt,
             'sapt2'         : proc.run_sapt,
             'sapt2+'        : proc.run_sapt,
             'sapt2+(3)'     : proc.run_sapt,
@@ -171,6 +172,8 @@ procedures = {
         },
         'hessian' : {
             # Upon adding a method to this list, add it to the docstring in frequency() below
+            'hf'            : proc.run_scf_hessian,
+            'scf'            : proc.run_scf_hessian,
         },
         'property' : {
             'hf'       : proc.run_scf_property,
