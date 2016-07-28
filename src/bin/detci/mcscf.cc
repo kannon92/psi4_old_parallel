@@ -69,6 +69,8 @@ void CIWavefunction::compute_mcscf()
     somcscf = boost::shared_ptr<SOMCSCF>(new DiskSOMCSCF(jk_, ints_, AO2SO_, H_));
   }
 
+  somcscf->set_ck_algorithm(options_.get_str("MCSCF_CK_ALGORITHM"));
+
   // We assume some kind of ras here.
   if (Parameters_->wfn != "CASSCF"){
     std::vector<Dimension> ras_spaces;

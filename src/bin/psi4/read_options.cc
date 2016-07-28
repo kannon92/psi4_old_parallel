@@ -756,6 +756,10 @@ int read_options(const std::string &name, Options & options, bool suppress_print
 
     /* - Do we run conventional or density fitted? -*/
     options.add_str("MCSCF_TYPE", "CONV", "DF CONV CONV_PARALLEL");
+    /* - Algoritm to use for matrix exponential 
+    TAYLOR = exp(U) = 1 + U + 1/2 U^2 + 1/6 U^3
+    EXPM   = exp(U) -> use expm algorithm in libmints -*/
+    options.add_str("MCSCF_CK_ALGORITHM", "TAYLOR", "TAYLOR EXPM");
 
     /*- Convergence algorithm to utilize. This is a flag for the future. !expert-*/
     options.add_str("MCSCF_ALGORITHM", "TWO_STEP", "ONE_STEP TWO_STEP");

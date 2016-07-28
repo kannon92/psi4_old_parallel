@@ -533,7 +533,7 @@ void CIWavefunction::transform_mcscf_ints_aodirect(bool approx_only)
             D_vec.push_back(std::make_pair(D, ij));
         }
     }
-    outfile->Printf("\n Form Active Density takes $8.6f s.", form_active_density.get());
+    outfile->Printf("\n Form Active Density takes %8.6f s.", form_active_density.get());
     timer_off("Forming Active Psuedo Density");
     std::vector<boost::shared_ptr<Matrix> > &Cl = jk_->C_left();
     std::vector<boost::shared_ptr<Matrix> > &Cr = jk_->C_right();

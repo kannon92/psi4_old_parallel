@@ -93,6 +93,10 @@ public:
      * @return   The rotated orbitals.
      */
     SharedMatrix Ck(SharedMatrix C, SharedMatrix x);
+    void set_ck_algorithm(std::string ck_algorithm)
+    {
+        ck_algorithm_ = ck_algorithm;
+    }
 
     /**
      * Computes the RHF energy for a given C matrix
@@ -202,6 +206,11 @@ protected:
 
     // Grab actMO (dense)
     virtual void set_act_MO();
+
+    // exp(U) = 1 + U + (1/2)U^2 + (1/6)U^3
+    void compute_ck_taylor(SharedMatrix U);
+    
+    std::string ck_algorithm_ = "TAYLOR";
 
     // Build the Q matrices
     virtual void compute_Q();

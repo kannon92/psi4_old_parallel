@@ -138,8 +138,6 @@ double SOMCSCF::rhf_energy(SharedMatrix C)
 
 SharedMatrix SOMCSCF::Ck(SharedMatrix C, SharedMatrix x)
 {
-
-    //outfile->Printf("\n Ck run with %d mkl threads", mkl_get_num_threads());
     SharedMatrix tmp(new Matrix("Ck", nirrep_, nmopi_, nmopi_));
 
     // Form full antisymmetric matrix
@@ -161,6 +159,25 @@ SharedMatrix SOMCSCF::Ck(SharedMatrix C, SharedMatrix x)
     }
     outfile->Printf("\n  Ck: Form_X takes %8.6f s", Form_X.get());
 
+   if(ck_algorithm_ == "TAYLOR") 
+   {
+        compute_ck_taylor(tmp);
+   }
+   else if(ck_algorithm_ == "EXPM")
+   {
+        tmp->expm();
+   }
+   else {
+        outfile->Printf("\n CK_ALGORITHM was %s but it should be either TAYLOR or EXPM", ck_algorithm_.c_str());
+        throw PSIEXCEPTION("WRONG CK AlGORITHM was choosen");
+   }
+   Timer CU;
+   SharedMatrix Cp = Matrix::doublet(C, tmp);
+   outfile->Printf("\n CU took %8.6f s.", CU.get());
+   return Cp;
+}
+void SOMCSCF::compute_ck_taylor(SharedMatrix tmp)
+{
     // Build exp(U) = 1 + U + 1/2 U U + 1/6 U U U
 
     Timer one_u_time;
@@ -188,14 +205,8 @@ SharedMatrix SOMCSCF::Ck(SharedMatrix C, SharedMatrix x)
     // We did not fully exponentiate the matrix, need to orthogonalize
     Timer U_schmidt;
     U->schmidt();
+    tmp->copy(U);
     outfile->Printf("\n U Schmidt took %8.6f s.", U_schmidt.get());
-
-    // C' = C U
-    Timer CU;
-    SharedMatrix Cp = Matrix::doublet(C, U);
-    outfile->Printf("\n CU took %8.6f s.", CU.get());
-
-    return Cp;
 }
 void SOMCSCF::update(SharedMatrix Cocc, SharedMatrix Cact, SharedMatrix Cvir,
             SharedMatrix OPDM, SharedMatrix TPDM)
