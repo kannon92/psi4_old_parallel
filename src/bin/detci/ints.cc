@@ -451,7 +451,6 @@ void CIWavefunction::transform_mcscf_ints_aodirect(bool approx_only)
     outfile->Printf("\n CSOtoAO takes %8.6f s.", CSOtoAO.get());
 
     /// This arrays give absolute offsets for active orbitals, orbitals included in CASSCF procedure (frozen_docc and frozen_virtual removed), and absolute index for the orbitals
-    //std::vector<int> active_abs(nact, 0);
     //std::vector<int> correlated_mos(nmo_no_froze, 0);
     //std::vector<int> absolute_mo(nmo_no_froze, 0);
 
@@ -486,6 +485,7 @@ void CIWavefunction::transform_mcscf_ints_aodirect(bool approx_only)
     //        absolute_mo[ruocc_start + cinum++] = orbnum++;
     //    }
     //}
+    std::vector<int> active_abs(nact, 0);
     for (int h = 0, cinum = 0, orbnum = 0, orbital_offset = 0; h < CalcInfo_->nirreps; h++) {
         orbnum += CalcInfo_->dropped_docc[h];
         for (int u = 0; u < CalcInfo_->ci_orbs[h]; u++) {
