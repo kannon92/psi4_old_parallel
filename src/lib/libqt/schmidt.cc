@@ -34,7 +34,10 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cmath>
-#include <libciomr/libciomr.h>
+//#include <libciomr/libciomr.h>
+#include "qt.h"
+
+
 
 namespace psi {
 
@@ -57,14 +60,19 @@ namespace psi {
 */
 void schmidt(double **A, int rows, int cols, std::string)
 {
-   double RValue;
+   double RValue = 0.0;
    for(size_t i=0;i<cols;++i){
-      dot_arr(A[i],A[i],cols,&RValue);
+      //dot_arr(A[i],A[i],cols,&RValue);
+      RValue = C_DDOT(cols, &A[i][0], 1, &A[i][0], 1);
       RValue=sqrt(RValue);
-      for(size_t I=0;I<cols;++I)A[i][I]/=RValue;
+      //for(size_t I=0;I<cols;++I)A[i][I]/=RValue;
+      C_DSCAL(cols, 1.0 / RValue, &A[i][0], 1);
       for(size_t j=i+1;j<cols;++j){
-         dot_arr(A[i],A[j],cols,&RValue);
-         for(size_t I=0;I<cols;++I)A[j][I]-=RValue*A[i][I];
+         //dot_arr(A[i],A[j],cols,&RValue);
+        RValue = C_DDOT(cols, &A[i][0], 1, &A[j][0], 1);
+         //for(size_t I=0;I<cols;++I)A[j][I]-=RValue*A[i][I];
+         C_DAXPY(cols, -1.0 * RValue, &A[i][0], 1, &A[j][0], 1);
+
       }
    }
 

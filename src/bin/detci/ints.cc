@@ -67,6 +67,9 @@
 #include "structs.h"
 #include "ciwave.h"
 #include "globaldefs.h"
+#ifdef _OPENMP
+#include <omp.h>
+#endif
 
 namespace psi { namespace detci {
 
@@ -435,16 +438,25 @@ void CIWavefunction::transform_mcscf_ints_aodirect(bool approx_only)
     // just transfroms the C_{mu_ao i} -> C_{mu_so i}
     timer_on("CIWave: Transform C matrix from SO to AO");
     Timer CSOtoAO;
-    for (size_t h = 0, index = 0; h < nirrep_; ++h){
+
+    /// An array that will say (nmo[0] = 0, nmo[1] = nmopi[0], nmo[2] = nmopi[1]
+    std::vector<int> nmo_offset(nirrep_, 0);
+    nmo_offset[0] = 0;
+    for(int h = 1; h < nirrep_; h++)
+        nmo_offset[h] = nmopi_[h-1];
+
+    for (size_t h = 0; h < nirrep_; ++h){
+        #pragma omp parallel for schedule(static)
         for (int i = 0; i < nmopi_[h]; ++i){
             size_t nao = nso_;
             size_t nso = nsopi_[h];
 
             if (!nso_) continue;
+            int index = nmo_offset[h] + i;
 
             C_DGEMV('N',nao,nso,1.0,AO2SO_->pointer(h)[0],nso,&Ca_sym->pointer(h)[0][i],nmopi_[h],0.0,&Call->pointer()[0][index],nmo_);
 
-            index += 1;
+
         }
     }
     timer_off("CIWave: Transform C matrix from SO to AO");
