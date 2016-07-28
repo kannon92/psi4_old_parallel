@@ -139,9 +139,12 @@ double SOMCSCF::rhf_energy(SharedMatrix C)
 SharedMatrix SOMCSCF::Ck(SharedMatrix C, SharedMatrix x)
 {
 
+    //outfile->Printf("\n Ck run with %d mkl threads", mkl_get_num_threads());
     SharedMatrix tmp(new Matrix("Ck", nirrep_, nmopi_, nmopi_));
 
     // Form full antisymmetric matrix
+
+    Timer Form_X;
     for (size_t h=0; h<nirrep_; h++){
 
         if (!noapi_[h] || !navpi_[h]) continue;
@@ -156,10 +159,12 @@ SharedMatrix SOMCSCF::Ck(SharedMatrix C, SharedMatrix x)
             }
         }
     }
+    outfile->Printf("\n  Ck: Form_X takes %8.6f s", Form_X.get());
 
     // Build exp(U) = 1 + U + 1/2 U U + 1/6 U U U
-    SharedMatrix U = tmp->clone();
 
+    Timer one_u_time;
+    SharedMatrix U = tmp->clone();
     for (size_t h=0; h<nirrep_; h++){
         if (!U->rowspi()[h]) continue;
         double** Up = U->pointer(h);
@@ -167,19 +172,28 @@ SharedMatrix SOMCSCF::Ck(SharedMatrix C, SharedMatrix x)
             Up[i][i] += 1.0;
         }
     }
+    outfile->Printf("\n  exp(U) = 1 + U = %8.5f s.", one_u_time.get());
 
+    Timer U_squared;
     U->gemm(false, false, 0.5, tmp, tmp, 1.0);
+    outfile->Printf("\n U^2 %8.5f s.", U_squared.get());
 
+    Timer U_third;
     SharedMatrix tmp_third = Matrix::triplet(tmp, tmp, tmp);
     tmp_third->scale(1.0/6.0);
     U->add(tmp_third);
+    outfile->Printf("\n U^3 + (1 + U + U^2) %8.6f s.", U_third.get());
     tmp_third.reset();
 
     // We did not fully exponentiate the matrix, need to orthogonalize
+    Timer U_schmidt;
     U->schmidt();
+    outfile->Printf("\n U Schmidt took %8.6f s.", U_schmidt.get());
 
     // C' = C U
+    Timer CU;
     SharedMatrix Cp = Matrix::doublet(C, U);
+    outfile->Printf("\n CU took %8.6f s.", CU.get());
 
     return Cp;
 }
