@@ -439,22 +439,24 @@ void CIWavefunction::transform_mcscf_ints_aodirect(bool approx_only)
     timer_on("CIWave: Transform C matrix from SO to AO");
     Timer CSOtoAO;
 
-    /// An array that will say (nmo[0] = 0, nmo[1] = nmopi[0], nmo[2] = nmopi[1]
     std::vector<int> nmo_offset(nirrep_, 0);
     nmo_offset[0] = 0;
+    /// Have an orbital offset array (nmo_offset[2] = nmopi_[0] + nmopi[1];
     for(int h = 1; h < nirrep_; h++)
-        nmo_offset[h] = nmopi_[h-1];
+        for(int low_h = 0; low_h < h; low_h++)
+            nmo_offset[h] += nmopi_[low_h];
 
-    for (size_t h = 0; h < nirrep_; ++h){
+    for (size_t h = 0, index = 0; h < nirrep_; ++h){
         #pragma omp parallel for schedule(static)
         for (int i = 0; i < nmopi_[h]; ++i){
             size_t nao = nso_;
             size_t nso = nsopi_[h];
 
-            if (!nso_) continue;
+            if (!nso) continue;
             int index = nmo_offset[h] + i;
 
             C_DGEMV('N',nao,nso,1.0,AO2SO_->pointer(h)[0],nso,&Ca_sym->pointer(h)[0][i],nmopi_[h],0.0,&Call->pointer()[0][index],nmo_);
+            //index = index + 1;
 
 
         }
