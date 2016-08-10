@@ -10,8 +10,8 @@
 struct BasisSet;
 
 
-//typedef struct OED *OED_t;
-//typedef struct ERD *ERD_t;
+typedef struct OED *OED_t;
+typedef struct ERD *ERD_t;
 typedef struct BasisSet *BasisSet_t;
 
 
