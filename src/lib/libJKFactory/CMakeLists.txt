@@ -16,8 +16,10 @@
 #Build Global Arrays (if needed)
 #include(cmake/BuildGA.txt)
 set(JK_GA_LIBS 
-"/home/hann965/src/gtfock/global_install/lib/libga.a"
-"/home/hann965/src/gtfock/global_install/lib/libarmci.a"
+"/home/hann965/src/gtfock/global/global_icc/lib/libga.a"
+"/home/hann965/src/gtfock/global/global_icc/lib/libarmci.a"
+#"/home/hann965/src/gtfock/global/global_gcc/lib/libga.a"
+#"/home/hann965/src/gtfock/global/global_gcc/lib/libarmci.a"
 )
 
 #I'm going to assume the user doesn't have GTFock

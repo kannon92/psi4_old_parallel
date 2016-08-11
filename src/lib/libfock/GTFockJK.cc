@@ -47,8 +47,10 @@ GTFockJK::GTFockJK(boost::shared_ptr<BasisSet> Primary) :
 }
 
 void GTFockJK::compute_JK() {
+
    ///KPH: Trying to get GTFock to work with other JK builds
    ///If user did not say how many jk builds are necessary, find this information from jk object.  
+
    if(NMats_ == 0)
    {
         NMats_ = C_left_.size(); 

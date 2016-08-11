@@ -1,8 +1,9 @@
 #Maybe this tells it to do dynamic integral balancing?
 add_definitions(-DDYNAMIC=1)
+#add_definitions(-DGA_NB=1)
 
 #Tells GTFock not build the SCF components
-add_definitions(-DDO_SCF=0)
+add_definitions(-DDO_SCF=1)
 
 #Tells GTFock not to print SCF timings
 add_definitions(-DSCF_TIMING=0)
@@ -17,18 +18,20 @@ add_definitions(-D__ALIGNLEN__=64)
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -m64")
 
 #If we have an Intel compiler also add this one:
-if(${CMAKE_C_COMPILER_ID} STREQUAL "Intel")
-  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -xHost -fasm-blocks -qno-offload")
-endif() 
-#set(JK_GA_LIBS 
-#"/home/hann965/src/nwchem/src/tools/install/lib/libga.a"
-#"/home/hann965/src/nwchem/src/tools/install/lib/libarmci.a"
-#)
+#if(${CMAKE_C_COMPILER_ID} STREQUAL "Intel")
+#  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -xHost -fasm-blocks -qno-offload=none")
+#  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -xHost ")
+#endif() 
 set(JK_GA_LIBS 
-"/home/hann965/src/gtfock/global_install/lib/libga.a"
-"/home/hann965/src/gtfock/global_install/lib/libarmci.a"
+"/home/hann965/src/gtfock/global/global_icc/lib/libga.a"
+"/home/hann965/src/gtfock/global/global_icc/lib/libarmci.a"
 )
-set(JK_GA_INC "/home/hann965/src/gtfock/global_install/include")
+#set(JK_GA_LIBS 
+#"/home/hann965/src/gtfock/global/global_gcc/lib/libga.a"
+#"/home/hann965/src/gtfock/global/global_gcc/lib/libarmci.a"
+#)
+#set(JK_GA_INC "/home/hann965/src/gtfock/global/global_gcc/include")
+set(JK_GA_INC "/home/hann965/src/gtfock/global/global_icc/include")
 
 add_subdirectory(pfock)
 add_subdirectory(libcint)
