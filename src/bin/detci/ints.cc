@@ -529,7 +529,6 @@ void CIWavefunction::transform_mcscf_ints_aodirect(bool approx_only)
             CAct->set_column(0, v, Call_vec);
     }
 
-
     timer_on("Forming Active Psuedo Density");
     Timer form_active_density;
     ///Step 1:  D_{mu nu} ^{tu} = C_{mu t} C_{nu u} forall t, u in active

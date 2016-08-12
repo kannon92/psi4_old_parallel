@@ -28,7 +28,9 @@
 #ifndef SRC_LIB_LIBJKFACTORY_SRC_MINIMALINTERFACE_H_
 #define SRC_LIB_LIBJKFACTORY_SRC_MINIMALINTERFACE_H_
 #include <vector>
+#include <map>
 #include <boost/shared_ptr.hpp>
+#include "../libparallel2/Communicator.h"
 
 class BasisSet;
 class PFock;
@@ -63,6 +65,9 @@ class MinimalInterface{
          void (MinimalInterface::*fxn)(
                std::vector<boost::shared_ptr<Matrix> >&)
          );
+      boost::shared_ptr<LibParallel::Communicator> Comm_;
+      std::map<int, std::vector<int> > subgroup_to_density_;
+      void SplitProcs(int&,int&);
    public:
       MinimalInterface(const int NMats=1,const bool AreSymm=true);
       ~MinimalInterface();

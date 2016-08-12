@@ -49,10 +49,16 @@ GTFockJK::GTFockJK(boost::shared_ptr<BasisSet> Primary) :
 void GTFockJK::compute_JK() {
    ///KPH: Trying to get GTFock to work with other JK builds
    ///If user did not say how many jk builds are necessary, find this information from jk object.  
+   outfile->Printf("\n NMats: %d", NMats_);
+   outfile->Printf("\n Cleft: %d Cright: %d", C_left_.size(), C_right_.size());
    if(NMats_ == 0)
    {
         NMats_ = C_left_.size(); 
         Impl_.reset(new MinimalInterface(NMats_, lr_symmetric_));
+        ///Not really sure why this is here
+        //Need to make sure that NMats is always equal to C_left/C_right
+        //
+        NMats_ = 0;
    }
    Timer SetP_time;
    Impl_->SetP(D_ao_);

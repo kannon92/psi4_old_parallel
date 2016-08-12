@@ -53,7 +53,6 @@ typedef boost::shared_ptr<psi::LibParallel::Communicator>
         SharedComm;
 //Helper fxns
 void MakeBasis(BasisSet** GTBasis,SharedBasis PsiBasis);
-void SplitProcs(int&,int&);
 
 typedef void (psi::MinimalInterface::*GetPutFxn)(
                          std::vector<SharedMatrix>& );
@@ -68,16 +67,52 @@ void psi::MinimalInterface::Vectorize(
 psi::MinimalInterface::~MinimalInterface(){
    PFock_destroy(PFock_);
    CInt_destroyBasisSet(GTBasis_);
+   Comm_->FreeComm();
 }
 
 psi::MinimalInterface::MinimalInterface(const int NMats,
       const bool AreSymm):NPRow_(1),NPCol_(1),
                           StartRow_(0),StartCol_(0),
                           EndRow_(0),EndCol_(0),Stride_(0),NBasis_(0){
+    //Trying to parallelize over the density matrices
+    //Try to split up communicators
+    psi::Options& options = psi::Process::environment.options;
+    int density_matrices_per_process = options.get_int("DENSITY_MATRICES_PER_PROCESS");
+    int subgroup = 1;
+    if(density_matrices_per_process == 0 or NMats < 4)
+    {
+        std::string Comm_subgroup = "WorldComm";
+        Comm_ = psi::WorldComm->GetComm()->MakeComm(1, Comm_subgroup);
+        std::vector<int> density_list(NMats, 0);
+        std::iota(density_list.begin(), density_list.end(), 0);
+        subgroup_to_density_[subgroup] = density_list;
+    }
+    else {
+        subgroup = NMats / density_matrices_per_process;
+        int total_number_process = psi::WorldComm->GetComm()->NProc();
+        int processor_per_group = total_number_process / subgroup;
+        outfile->Printf("\n subgroup: %d total_number_process: %d processor_per_group: %d", subgroup, total_number_process, processor_per_group);
+        int which_processor_group = (psi::WorldComm->GetComm()->Me() % subgroup);
+        std::string Comm_subgroup = "SubDensComm" + std::to_string(which_processor_group);
+        Comm_ = psi::WorldComm->GetComm()->MakeComm(which_processor_group, Comm_subgroup);
+        for(int i = 0; i < subgroup; i++) {
+            std::vector<int> density_list;
+            if(i != subgroup - 1) 
+            {
+                density_list.resize(density_matrices_per_process);
+                std::iota(density_list.begin(), density_list.end(), i * density_matrices_per_process);
+            }
+            else {
+                density_list.resize(density_matrices_per_process + NMats % density_matrices_per_process);
+                std::iota(density_list.begin(), density_list.end(), i * density_matrices_per_process);
+            }
+            subgroup_to_density_[subgroup] = density_list;
+
+        }
+    }
     SetUp();
     SplitProcs(NPRow_,NPCol_);
     outfile->Printf("\n Using GTFock for ParallelJK build with %d MPI processes and %d omp threads", NPRow_ * NPCol_, omp_get_max_threads());
-    psi::Options& options = psi::Process::environment.options;
     SharedBasis primary = psi::BasisSet::pyconstruct_orbital(
     		                  psi::Process::environment.legacy_molecule(),
                               "BASIS", options.get_str("BASIS"));
@@ -91,8 +126,13 @@ psi::MinimalInterface::MinimalInterface(const int NMats,
    //a negative value.
    int NBlkFock=-1;
    Timer pfock_create;
+   int which_processor_group = (psi::WorldComm->GetComm()->Me() % (subgroup + 1));
+   size_t my_group_size = subgroup_to_density_[subgroup].size();
+
+   outfile->Printf("\n which_processor_group: %d my_group_size: %lu", which_processor_group, my_group_size);
    int return_flag = (int) PFock_create(GTBasis_,NPRow_,NPCol_,NBlkFock,IntThresh,
-         NMats,AreSymm,&PFock_);
+         static_cast<int>(my_group_size) ,AreSymm,&PFock_);
+
    if(return_flag != 0)
    {
        
@@ -120,7 +160,7 @@ void psi::MinimalInterface::SetP(std::vector<SharedMatrix>& Ps){
    }
    return_flag = (int)PFock_commitDenMats(PFock_);
    return_flag = (int)PFock_computeFock(GTBasis_,PFock_);
-   PFock_getStatistics(PFock_);
+   //PFock_getStatistics(PFock_);
    delete [] Buffer;
    if(return_flag != 0)
    {
@@ -190,20 +230,20 @@ void psi::MinimalInterface::Gather(SharedMatrix Result,
    if(!Result)Result=SharedMatrix(new psi::Matrix(NBasis_,NBasis_));
    SharedMatrix temp(new psi::Matrix(NBasis_,NBasis_));
    FillMat(temp,StartRow_,EndRow_,StartCol_,EndCol_,Block);
-   ConstSharedComm Comm=psi::WorldComm->GetComm();
-   Comm->AllReduce(&(*temp)(0,0),NBasis_*NBasis_,&(*Result)(0,0),LibParallel::ADD);
+   //ConstSharedComm Comm=psi::WorldComm->GetComm();
+   Comm_->AllReduce(&(*temp)(0,0),NBasis_*NBasis_,&(*Result)(0,0),LibParallel::ADD);
 }
 
 void psi::MinimalInterface::BlockDims(const int NBasis){
-   ConstSharedComm Comm=psi::WorldComm->GetComm();
-   int MyRank=Comm->Me();
+   //ConstSharedComm Comm=psi::WorldComm->GetComm();
+   int MyRank=Comm_->Me();
    int IDs[2];
    //Divide the mat into NPRow_ by NPCol_ blocks
    //Note the following works because I know NPRow_*NPCol_=NProc
    IDs[0]=MyRank/NPCol_;//Row of my block
    IDs[1]=MyRank%NPCol_;//Col of my block
    for(int i=0;i<2;i++){
-      SharedComm TempComm=Comm->MakeComm(IDs[i]);
+      SharedComm TempComm=Comm_->MakeComm(IDs[i]);
       int MyDim=TempComm->Me();
       int & DimStart=(i==0?StartRow_:StartCol_);
       int & DimEnd=(i==0?EndRow_:EndCol_);
@@ -217,9 +257,9 @@ void psi::MinimalInterface::BlockDims(const int NBasis){
    Stride_=EndCol_-StartCol_+1;
 }
 
-void SplitProcs(int& NPRow, int& NPCol){
-   ConstSharedComm Comm=psi::WorldComm->GetComm();
-   int NProc=Comm->NProc();
+void psi::MinimalInterface::SplitProcs(int& NPRow, int& NPCol){
+   //ConstSharedComm Comm=psi::WorldComm->GetComm();
+   int NProc=Comm_->NProc();
    NPRow=(int)floor(std::sqrt((double)NProc));
    bool done=false;
    while (!done) {

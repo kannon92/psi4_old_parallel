@@ -38,8 +38,7 @@ static PFockStatus_t init_fock(PFock_t pfock)
     int nbp_p;
     int nshells_p;
         
-    MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
-
+    myrank = GA_Nodeid();
     nbp_p = pfock->nbp_p;
     nbp_row = pfock->nprow * nbp_p;
     nbp_col = pfock->npcol *nbp_p;
@@ -1241,8 +1240,8 @@ PFockStatus_t PFock_getLocalMatInds(PFock_t pfock,
 {
     int lo[2];
     int hi[2];
-    int myrank;  
-    MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
+    int myrank = GA_Nodeid();
+    //MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
     NGA_Distribution(pfock->ga_D[0], myrank, lo, hi);
     *rowstart = lo[0];
     *rowend = hi[0];
@@ -1261,7 +1260,7 @@ PFockStatus_t PFock_getLocalMatPtr(PFock_t pfock,
 {
     int lo[2];
     int hi[2];
-    int myrank;
+    int myrank = GA_Nodeid();
     int *ga;
 
     if (index < 0 || index >= pfock->max_numdmat)
@@ -1271,7 +1270,7 @@ PFockStatus_t PFock_getLocalMatPtr(PFock_t pfock,
     }
     
     ga = pfock->gatable[type];
-    MPI_Comm_rank (MPI_COMM_WORLD, &myrank);
+    //MPI_Comm_rank (MPI_COMM_WORLD, &myrank);
     NGA_Distribution (ga[index], myrank, lo, hi);
     NGA_Access (ga[index], lo, hi, mat, stride);
     *rowstart = lo[0];
@@ -1311,8 +1310,8 @@ PFockStatus_t PFock_computeFock(BasisSet_t basis,
     struct timeval tv2;
     struct timeval tv3;
     struct timeval tv4; 
-    int myrank;
-    MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
+    int myrank = GA_Nodeid();
+//    MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
     pfock->committed = 0;      
     pfock->timepass = 0.0;
     pfock->timereduce = 0.0;
