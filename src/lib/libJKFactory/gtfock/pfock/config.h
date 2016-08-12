@@ -11,13 +11,16 @@
                              //  10 is full info
 
 #define alignsize  64
-#ifdef __INTEL_COMPILER
-   #define PFOCK_MALLOC(size)    _mm_malloc(size, alignsize)
-   #define PFOCK_FREE(addr)      _mm_free(addr)
-#else
-   #define PFOCK_MALLOC(size) malloc(size)
-   #define PFOCK_FREE(addr) free(addr)
-#endif
+//#ifdef __INTEL_COMPILER
+//   #define PFOCK_MALLOC(size)    _mm_malloc(size, alignsize)
+//   #define PFOCK_FREE(addr)      _mm_free(addr)
+//#else
+//   #define PFOCK_MALLOC(size) malloc(size)
+//   #define PFOCK_FREE(addr) free(addr)
+//#endif
+//Kevin is trying to find bugs due to INTEL
+#define PFOCK_MALLOC(size) malloc(size)
+#define PFOCK_FREE(addr) free(addr)
 
 #if ( _DEBUG_LEVEL_ == -1 )
 #define PFOCK_PRINTF( level, fmt, args... )        {}
