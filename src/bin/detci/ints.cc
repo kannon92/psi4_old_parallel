@@ -583,6 +583,7 @@ void CIWavefunction::transform_mcscf_ints_aodirect(bool approx_only)
         int j = D_vec[D_tasks].second[1];
         SharedMatrix J = jk_->J()[D_tasks];
         SharedMatrix half_trans = Matrix::triplet(Call, J, CAct, true, false, false);
+        half_trans->print();
         for(size_t p = 0; p < nmo_; p++){
             for(size_t q = 0; q < nact; q++){
                 casscf_ints->set(p * nact + q, i * nact + j, half_trans->get(p, q));
@@ -610,6 +611,7 @@ void CIWavefunction::transform_mcscf_ints_aodirect(bool approx_only)
             }
         }
     }
+    outfile->Printf("\n actMO RMS: %8.8f", actMO->rms());
     outfile->Printf("\n Fill the (zu|xy) integrals takes %8.6f s", Fill_zuxy.get());
     timer_off("CIWave: Filling the (zu|xy) integrals");
     Timer RDocc_operator;
@@ -1039,8 +1041,10 @@ void CIWavefunction::onel_ints_from_jk() {
     Cl.clear();
     Cr.clear();
     Cl.push_back(Cdrc);
+    Cr.push_back(Cdrc);
     jk_->compute();
     Cl.clear();
+    Cr.clear();
 
     const std::vector<SharedMatrix>& J = jk_->J();
     const std::vector<SharedMatrix>& K = jk_->K();

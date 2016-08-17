@@ -146,7 +146,7 @@ void my_peig(int ga_A, int ga_B, int n, int nprow, int npcol, double *eval)
 
     // init blacs
     int nb = MIN(n / nprow, n / npcol);
-    MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
+    //MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
     Cblacs_pinfo(&nn, &mm);
     Cblacs_get(-1, 0, &ictxt);
     Cblacs_gridinit(&ictxt, "Row", nprow, npcol);

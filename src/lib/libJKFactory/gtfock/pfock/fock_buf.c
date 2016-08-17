@@ -22,8 +22,8 @@ void load_local_bufD(PFock_t pfock)
     int sizerow = pfock->sizeloadrow;
     int sizecol = pfock->sizeloadcol;
 
-    int myrank;
-    MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
+    int myrank = GA_Nodeid();
+    //MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
     int lo[2];
     int hi[2];
     int ldD;    
@@ -114,8 +114,8 @@ void store_local_bufF(PFock_t pfock)
     int *loadcol = pfock->loadcol;
     int sizerow = pfock->sizeloadrow;
     int sizecol = pfock->sizeloadcol;
-    int myrank;
-    MPI_Comm_rank (MPI_COMM_WORLD, &myrank);
+    int myrank = GA_Nodeid();
+    //MPI_Comm_rank (MPI_COMM_WORLD, &myrank);
     int lo[2];
     int hi[2];
     int ldF;

@@ -4,6 +4,7 @@
 #include <omp.h>
 #include <string.h>
 #include <ga.h>
+#include <ga-mpi.h>
 #include <mpi.h>
 
 #include "CInt.h"
@@ -14,8 +15,10 @@
 
 int schwartz_screening(PFock_t pfock, BasisSet_t basis)
 {
-    int myrank;
-    MPI_Comm_rank(MPI_COMM_WORLD, &myrank); 
+    int myrank = GA_Nodeid();
+    MPI_Comm comm;
+    comm = GA_MPI_Comm();
+    //MPI_Comm_rank(MPI_COMM_WORLD, &myrank); 
 
     // create shell pairs values    
     //ERD_t erd;
@@ -99,7 +102,7 @@ int schwartz_screening(PFock_t pfock, BasisSet_t basis)
     NGA_Put(pfock->ga_screening, lo, hi, sq_values, &ld);
     // max value
     MPI_Allreduce(&maxtmp, &(pfock->maxvalue), 1,
-                  MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+                  MPI_DOUBLE, MPI_MAX, comm);
     //CInt_destroyERD(erd);
     PFOCK_FREE(sq_values);
 

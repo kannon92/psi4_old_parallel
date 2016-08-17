@@ -145,7 +145,6 @@ void CIWavefunction::compute_mcscf()
 
     int my_rank = 0;
     int nproc   = 0;
-    MPI_Comm_rank(MPI_COMM_WORLD, &my_rank);
 
     // Run CI and set quantities
     if(my_rank == 0)
@@ -158,9 +157,6 @@ void CIWavefunction::compute_mcscf()
     	form_tpdm();
     	outfile->Printf("\n Computing PDM took %8.4f s", form_pdm.get());
     }
-    MPI_Bcast(&current_energy, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
-    size_t nact = CalcInfo_->num_ci_orbs
-    MPI_Bcast(&(opdm_->pointer()[0]), nact * nact, MPI_DOUBLE, 0, MPI_COMM_WORLD);
 
     current_energy = Process::environment.globals["MCSCF TOTAL ENERGY"];
     ediff = current_energy - old_energy;
@@ -170,7 +166,6 @@ void CIWavefunction::compute_mcscf()
     SharedMatrix Cact  = get_orbitals("ACT");
     SharedMatrix Cvir  = get_orbitals("VIR");
     SharedMatrix actTPDM = get_tpdm("SUM", true);
-    MPI_Bcast(&(actTPDM->pointer()[0]), nact * nact * nact * nact, MPI_DOUBLE, 0, MPI_COMM_WORLD);
 
     if (MCSCF_Parameters_->mcscf_type == "CONV_PARALLEL"){
          

@@ -22,16 +22,15 @@ set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -m64")
 #  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -xHost -fasm-blocks -qno-offload=none")
 #  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -xHost ")
 #endif() 
-set(JK_GA_LIBS 
-"/home/hann965/src/gtfock/global/global_icc/lib/libga.a"
-"/home/hann965/src/gtfock/global/global_icc/lib/libarmci.a"
-)
-#set(JK_GA_LIBS 
 #"/home/hann965/src/gtfock/global/global_gcc/lib/libga.a"
 #"/home/hann965/src/gtfock/global/global_gcc/lib/libarmci.a"
 #)
 #set(JK_GA_INC "/home/hann965/src/gtfock/global/global_gcc/include")
-set(JK_GA_INC "/home/hann965/src/gtfock/global/global_icc/include")
+set(JK_GA_LIBS 
+"/home/kannon/src/GTFock/GAlib5_4_infiniband/lib64/libga.a"
+"/home/kannon/src/GTFock/GAlib5_4_infiniband/lib64/libarmci.a"
+)
+set(JK_GA_INC "/home/kannon/src/GTFock/GAlib5_4_infiniband/include")
 
 add_subdirectory(pfock)
 add_subdirectory(libcint)

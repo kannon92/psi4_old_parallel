@@ -54,6 +54,10 @@
 #ifdef HAVE_AMBIT
 #include <ambit/tensor.h>
 #endif
+#ifdef HAVE_JK_FACTORY
+#include <ga.h>
+#include <macdecls.h>
+#endif
 
 #define MAIN
 
@@ -89,6 +93,9 @@ int main(int argc, char **argv)
     // Initialize external Ambit library
 #ifdef HAVE_AMBIT
     ambit::initialize(argc, argv);
+#endif
+#ifdef HAVE_JK_FACTORY
+    GA_Initialize();
 #endif
 
     // Setup the environment
@@ -152,6 +159,9 @@ int main(int argc, char **argv)
 
 #ifdef HAVE_AMBIT
     ambit::finalize();
+#endif
+#ifdef HAVE_JK_FACTORY
+    GA_Terminate();
 #endif
 
     // This needs to be changed to a return value from the processed script

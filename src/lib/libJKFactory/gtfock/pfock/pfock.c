@@ -39,6 +39,8 @@ static PFockStatus_t init_fock(PFock_t pfock)
     int nshells_p;
         
     myrank = GA_Nodeid();
+    //printf("\n my_rank: %d", myrank);
+    //printf("\n my_size: %d", GA_Nnodes());
     nbp_p = pfock->nbp_p;
     nbp_row = pfock->nprow * nbp_p;
     nbp_col = pfock->npcol *nbp_p;
@@ -225,11 +227,14 @@ static PFockStatus_t repartition_fock (PFock_t pfock)
     int myrank;
     int ret;
     
-    MPI_Comm_rank (MPI_COMM_WORLD, &myrank);
+    //MPI_Comm_rank (MPI_COMM_WORLD, &myrank);
+    myrank = GA_Nodeid();
+    int mysize = GA_Nnodes();
 
     // for row partition
     int *newrowptr = (int *)malloc (sizeof(int) * (nprow + 1));
     int *newcolptr = (int *)malloc (sizeof(int) * (npcol + 1));
+    //printf("NNZ_PARTITION P%d of %d nbp_p: %d", myrank, mysize,nbp_p);
     ret = nnz_partition (nshells, nnz, nbp_p, shellptr, nprow, newrowptr);    
     if (ret != 0)
     {
@@ -497,8 +502,8 @@ static PFockStatus_t create_FD_GArrays (PFock_t pfock)
         if (pfock->ga_D2[i] == 0) {
             GA_Print_stats();
             printf("\n GA_Inquire_memory(): %lu", GA_Inquire_memory());
-            int my_rank;
-            MPI_Comm_rank(MPI_COMM_WORLD, &my_rank);
+            int my_rank = GA_Nodeid();
+            //MPI_Comm_rank(MPI_COMM_WORLD, &my_rank);
             
             printf("\n GA_D2 failed on %d D with P%d", i, my_rank);
             PFOCK_PRINTF(1, "GA allocation failed\n");
@@ -565,8 +570,8 @@ static PFockStatus_t create_FD_GArrays (PFock_t pfock)
 
 static PFockStatus_t create_buffers (PFock_t pfock)
 {
-    int myrank;
-    MPI_Comm_rank (MPI_COMM_WORLD, &myrank);
+    int myrank = GA_Nodeid();
+    //MPI_Comm_rank (MPI_COMM_WORLD, &myrank);
     int myrow = myrank/pfock->npcol;
     int mycol = myrank%pfock->npcol;   
     int *ptrrow = (int *)PFOCK_MALLOC(sizeof(int) * pfock->nshells);
@@ -790,7 +795,7 @@ static void destroy_buffers (PFock_t pfock)
 
 
 PFockStatus_t init_GA(int nbf, int nprow, int npcol,
-                      int num_dmat, int sizeheap, int sizestack)
+                      int num_dmat, int sizeheap, int sizestack, int* processor_list, int processor_size)
 {
     int maxrowsize = (nbf + nprow - 1)/nprow;
     int maxcolsize = (nbf + npcol - 1)/npcol;    
@@ -799,12 +804,35 @@ PFockStatus_t init_GA(int nbf, int nprow, int npcol,
     heap += sizeheap;
     stack += sizestack;
 
-    GA_Initialize();
+    //GA_Initialize();
     if (!MA_initialized()) {
         if (!MA_init(C_DBL, heap, stack)) {
             return PFOCK_STATUS_INIT_FAILED;
         }
     }
+    //for(int i = 0; i < processor_size; i++)
+        //printf("\nGA Processor_list[%d] = %d", i, processor_list[i]);
+
+    MPI_Comm ga_mpi_comm;
+    ga_mpi_comm = GA_MPI_Comm();
+    int myrank, mysize;
+    MPI_Comm_rank(ga_mpi_comm, &myrank);
+    MPI_Comm_size(ga_mpi_comm, &mysize);
+    //printf("\n SUBGROUP TEST BEFORE_DEFAULT: myrank: %d mysize: %d", myrank, mysize);
+
+    //printf("\n GA_Nodeid(): %d PGroup_create()", GA_Nodeid());
+    if(processor_size != mysize)
+    {
+        int my_pgroup_handle = GA_Pgroup_create(processor_list, processor_size);
+        //printf("\n GA_Nodeid(): %d PGroup_set_default()", GA_Nodeid());
+        NGA_Pgroup_set_default(my_pgroup_handle);
+        //printf("\n GA_Nodeid(): %d PGroup_set_default_done", GA_Nodeid());
+        ga_mpi_comm = GA_MPI_Comm_pgroup_default();
+        MPI_Comm_rank(ga_mpi_comm, &myrank);
+        MPI_Comm_size(ga_mpi_comm, &mysize);
+        //printf("\n SUBGROUP TEST AFTER_DEFAULT: myrank: %d mysize: %d", myrank, mysize);
+    }
+
     
     return PFOCK_STATUS_SUCCESS;
 }
@@ -812,14 +840,16 @@ PFockStatus_t init_GA(int nbf, int nprow, int npcol,
 
 void finalize_GA()
 {    
-    GA_Terminate();
+    //GA_Terminate();
+    GA_Pgroup_set_default(GA_Pgroup_get_world());
 }
 
 
 PFockStatus_t PFock_create(BasisSet_t basis, int nprow, int npcol, int ntasks,
                            double tolscr, int max_numdmat, int symm,
-                           PFock_t *_pfock)
+                           PFock_t *_pfock, int* list_of_processors, int number_of_processors)
 {
+   
     // allocate pfock
     PFock_t pfock = (PFock_t)PFOCK_MALLOC(sizeof(struct PFock));    
     if (NULL == pfock) {
@@ -837,11 +867,17 @@ PFockStatus_t PFock_create(BasisSet_t basis, int nprow, int npcol, int ntasks,
                      " has not been called\n");
         return PFOCK_STATUS_INIT_FAILED;        
     }
-    int nprocs;
     int myrank;   
+    int nprocs;
     MPI_Comm_size(MPI_COMM_WORLD, &nprocs);         
+    //printf("\n PFock_Create NPROC(MPI): %d", nprocs);
     MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
+    nprocs = number_of_processors;
+    //printf("\n PFock_Create NPROC(passed): %d", nprocs);
 
+    ///The subgroup that GA will use.  
+    pfock->proc_group_list = list_of_processors;
+    pfock->proc_group_size = number_of_processors;
     // initialization
     pfock->nosymm = (symm == 0 ? 1 : 0);
     pfock->maxnfuncs = CInt_getMaxShellDim (basis);
@@ -880,7 +916,8 @@ PFockStatus_t PFock_create(BasisSet_t basis, int nprow, int npcol, int ntasks,
     }
           
     // init global arrays
-    init_GA(pfock->nbf, nprow, npcol, pfock->max_numdmat2, 0, 0);
+    //printf("\n nprow: %d npcol: %d", nprow, npcol);
+    init_GA(pfock->nbf, nprow, npcol, pfock->max_numdmat2, 0, 0, pfock->proc_group_list, pfock->proc_group_size);
         
     // set tasks
     int minnshells = (nprow > npcol ? nprow : npcol);
@@ -1038,7 +1075,7 @@ PFockStatus_t PFock_destroy(PFock_t pfock)
     destroy_buffers(pfock);
     // I thought we should call that but apparently this
     // breaks everything. -JFG 
-    //finalize_GA();
+    finalize_GA();
 
     PFOCK_FREE(pfock->mpi_timepass);
     PFOCK_FREE(pfock->mpi_timereduce);
@@ -1069,7 +1106,7 @@ PFockStatus_t PFock_setNumDenMat(int numdmat, PFock_t pfock)
     //if (numdmat <= 0 || numdmat > pfock->max_numdmat) {
     //if(numdmat <= 0 || numdmat > pfock->max_numdmat2) {
     if(numdmat <= 0 || numdmat > pfock->max_numdmat){
-        printf("\n numdmat: %d > max_numdmat: %d", numdmat, pfock->max_numdmat);
+        //printf("\n numdmat: %d > max_numdmat: %d", numdmat, pfock->max_numdmat);
         PFOCK_PRINTF(1, "Invalid number of density matrices\n");
         return PFOCK_STATUS_INVALID_VALUE;
     }
@@ -1947,8 +1984,8 @@ PFockStatus_t PFock_getMemorySize(PFock_t pfock, double *mem_cpu)
 
 PFockStatus_t PFock_getStatistics(PFock_t pfock)
 {
-    int myrank;
-    MPI_Comm_rank (MPI_COMM_WORLD, &myrank);
+    int myrank = GA_Nodeid();
+    //MPI_Comm_rank (MPI_COMM_WORLD, &myrank);
     
     // statistics
     MPI_Gather (&pfock->steals, 1, MPI_DOUBLE,

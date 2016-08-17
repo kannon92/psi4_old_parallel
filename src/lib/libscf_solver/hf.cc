@@ -412,10 +412,12 @@ void HF::integrals()
             boost::shared_ptr<Molecule> other_legacy = Process::environment.legacy_molecule();
             Process::environment.set_legacy_molecule(molecule_);
             if(options_.get_bool("SOSCF"))
-                jk_ = boost::shared_ptr<JK>(new GTFockJK(basisset_,2,false));
+                jk_ = boost::shared_ptr<JK>(new GTFockJK(basisset_));
+                //jk_ = boost::shared_ptr<JK>(new GTFockJK(basisset_,2,false));
             else
-                jk_ = boost::shared_ptr<JK>(new GTFockJK(basisset_,2,true));
-            Process::environment.set_legacy_molecule(other_legacy);
+                jk_ = boost::shared_ptr<JK>(new GTFockJK(basisset_));
+                //jk_ = boost::shared_ptr<JK>(new GTFockJK(basisset_,2,true));
+            //Process::environment.set_legacy_molecule(other_legacy);
           #else
             throw PSIEXCEPTION("GTFock was not compiled in this version.\n");
           #endif

@@ -1537,6 +1537,7 @@ int read_options(const std::string &name, Options & options, bool suppress_print
     options.add_str("SCF_TYPE", "DIRECT", "DIRECT DF PK OUT_OF_CORE PS INDEPENDENT GTFOCK");
     /* - Number of density matrices for GTFock to build on different processors - */
     options.add_int("DENSITY_MATRICES_PER_PROCESS", 0);
+    options.add_int("NUMBER_OF_SUBGROUPS", 1);
     /*- JK Independent options
      -*/
     options.add_str("INDEPENDENT_J_TYPE", "DIRECT_SCREENING", "DIRECT_SCREENING");

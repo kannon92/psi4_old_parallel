@@ -16,11 +16,10 @@
 #Build Global Arrays (if needed)
 #include(cmake/BuildGA.txt)
 set(JK_GA_LIBS 
-"/home/hann965/src/gtfock/global/global_icc/lib/libga.a"
-"/home/hann965/src/gtfock/global/global_icc/lib/libarmci.a"
-#"/home/hann965/src/gtfock/global/global_gcc/lib/libga.a"
-#"/home/hann965/src/gtfock/global/global_gcc/lib/libarmci.a"
+"/home/kannon/src/GTFock/GAlib5_4_infiniband/lib64/libga.a"
+"/home/kannon/src/GTFock/GAlib5_4_infiniband/lib64/libarmci.a"
 )
+set(JK_GA_INC "/home/kannon/src/GTFock/GAlib5_4_infiniband/include")
 
 #I'm going to assume the user doesn't have GTFock
 #so let's build that now
@@ -34,5 +33,7 @@ set(JK_LIBS ${CMAKE_BINARY_DIR}/libGTFock.a)
 set(JK_LIBS ${JK_LIBS} ${JK_GA_LIBS} )
 add_library(GTFockCInt STATIC CifiedFxns.h
                              CifiedFxns.cc)
+
+include_directories(${JK_GA_INC})
 add_dependencies(GTFockCInt qt mints)
 set_property(GLOBAL APPEND PROPERTY LIBLIST GTFockCInt)

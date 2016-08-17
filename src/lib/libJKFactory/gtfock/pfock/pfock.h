@@ -39,6 +39,8 @@ struct PFock {
     int nprocs;
     int nprow; // np per row    
     int npcol; // np per col
+    int* proc_group_list;
+    int  proc_group_size;
     // task size
     int nbp_p;
     int nbp_row;
@@ -235,12 +237,13 @@ typedef enum
  * @param[in] max_numdmat  the maximum number of density matrices
  * @param[in] symm         whether the density matrices are symmetric or not  
  * @param[in] pfock        the pointer to the PFock_t compute engine returned
- *
+ * @param[in] processor_list list of processors that are calling GTFock[subgroups]
+ * @param[in] processor_size number of processors taht call GTFock[subgroups]
  * @return    the function return status
  */
 PFockStatus_t PFock_create(BasisSet_t basis, int nprow, int npcol, int ntasks,
                            double tolscr, int max_numdmat, int symm,
-                           PFock_t *_pfock);
+                           PFock_t *_pfock, int* processor_list, int processor_size);
 
 /** 
  * @brief  Destroy the PFock compute engine. 

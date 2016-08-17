@@ -34,12 +34,12 @@ namespace psi {
 ///KPH wants to hold off on allocating Impl because it needs the number of 
 ///J and K matrices.
 
-GTFockJK::GTFockJK(boost::shared_ptr<psi::BasisSet> Primary,
-      size_t NMats,bool AreSymm):
-      JK(Primary),Impl_(new MinimalInterface(NMats,AreSymm))
-{
-    NMats_ = NMats;
-}
+//GTFockJK::GTFockJK(boost::shared_ptr<psi::BasisSet> Primary,
+//      size_t NMats,bool AreSymm):
+//      JK(Primary),Impl_(new MinimalInterface(Primary, NMats,AreSymm))
+//{
+//    NMats_ = NMats;
+//}
 GTFockJK::GTFockJK(boost::shared_ptr<BasisSet> Primary) :
     JK(Primary)
 {
@@ -50,23 +50,30 @@ void GTFockJK::compute_JK() {
 
    ///KPH: Trying to get GTFock to work with other JK builds
    ///If user did not say how many jk builds are necessary, find this information from jk object.  
-   outfile->Printf("\n NMats: %d", NMats_);
-   outfile->Printf("\n Cleft: %d Cright: %d", C_left_.size(), C_right_.size());
-   if(NMats_ == 0)
-   {
-        NMats_ = C_left_.size(); 
-        Impl_.reset(new MinimalInterface(NMats_, lr_symmetric_));
-        ///Not really sure why this is here
-        //Need to make sure that NMats is always equal to C_left/C_right
-        //
-        NMats_ = 0;
-   }
+   //if(NMats_ == 0)
+   //{
+   //     outfile->Printf("\n NMats: %d", NMats_);
+   //     outfile->Printf("\n Cleft: %d Cright: %d", C_left_.size(), C_right_.size());
+   //     NMats_ = C_left_.size(); 
+   //     Impl_.reset(new MinimalInterface(NMats_, lr_symmetric_, primary_));
+   //     ///Not really sure why this is here
+   //     //Need to make sure that NMats is always equal to C_left/C_right
+   //     //
+   //     NMats_ = 0;
+   //}
+   //else 
+   //{
+   //     NMats_ = C_left_.size();
+   //}
+   NMats_ = C_left_.size();
+   MinimalInterface Impl(NMats_, lr_symmetric_);
    Timer SetP_time;
-   Impl_->SetP(D_ao_);
-   printf("\n SetP takes %8.8f s.", SetP_time.get());
+   Impl.SetP(D_ao_);
+   printf("\n SetP takes %8.8f s. with %d densities", SetP_time.get(), D_ao_.size());
    Timer GetJK;
-   Impl_->GetJ(J_ao_);
-   Impl_->GetK(K_ao_);
+   Impl.GetJ(J_ao_);
+   Impl.GetK(K_ao_);
+   //Impl_->DeleteComm();
    outfile->Printf("\n Get J and K %8.8f s.", GetJK.get());
 }
 }

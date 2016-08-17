@@ -1,5 +1,5 @@
 #! CASSCF/6-31G** energy point
-
+import forte 
 molecule {
 O
 H 1 1.00
@@ -18,3 +18,10 @@ set {
 casscf_energy = energy('casscf')
 
 compare_values(-76.073865006902, casscf_energy, 6, 'CASSCF Energy')  #TEST
+#set forte {
+#    restricted_docc [1, 0, 0, 0]
+#    active          [3, 0, 1, 2] 
+#    job_type        casscf
+#}
+#forte_energy = energy('forte')
+#compare_values(casscf_energy, forte_energy, 6, "FORTE CASSCF Energy")

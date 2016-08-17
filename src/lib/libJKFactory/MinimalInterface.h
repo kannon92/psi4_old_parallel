@@ -38,7 +38,6 @@ namespace psi{
 class Matrix;
 class TwoBodyAOInt;
 
-
 #ifdef HAVE_JK_FACTORY
 namespace Interface{
 extern std::vector<boost::shared_ptr<TwoBodyAOInt> > Ints;
@@ -65,9 +64,15 @@ class MinimalInterface{
          void (MinimalInterface::*fxn)(
                std::vector<boost::shared_ptr<Matrix> >&)
          );
-      boost::shared_ptr<LibParallel::Communicator> Comm_;
-      std::map<int, std::vector<int> > subgroup_to_density_;
       void SplitProcs(int&,int&);
+      ///Comm_ is the subgroup responsble for computing subset of densities
+      boost::shared_ptr<LibParallel::Communicator> Comm_;
+      boost::shared_ptr<const LibParallel::Communicator> GlobalComm_;
+      int subgroup_ = 1;
+      std::map<int, std::vector<int> > subgroup_to_density_;
+      void create_communicators(int NMats, int density_matrices, int subgroup_number);
+      void create_processor_list(std::vector<int>& processor_list, int &processor_size, int total_number_density);
+
    public:
       MinimalInterface(const int NMats=1,const bool AreSymm=true);
       ~MinimalInterface();
@@ -84,6 +89,7 @@ class MinimalInterface{
          Vectorize(P,&MinimalInterface::SetP);
       }
       bool UseJKFactory()const{return true;}
+      //void DeleteComm();
 };
 #else
 class MinimalInterface{
