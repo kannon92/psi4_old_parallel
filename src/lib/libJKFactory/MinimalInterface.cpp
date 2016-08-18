@@ -85,9 +85,9 @@ psi::MinimalInterface::MinimalInterface(const int NMats,
     //GA_Initialize();
     ///How many density matrices to have GTFock be responsible for
     ///If user does not specify this, assume GTFock handles all density matrices
-    int total_number_processors = psi::WorldComm->GetComm()->NProc();
-    int global_me = psi::WorldComm->GetComm()->Me();
     GlobalComm_ = psi::WorldComm->GetComm();
+    int total_number_processors = GlobalComm_->NProc();
+    int global_me = GlobalComm_->Me();
     outfile->Printf("\n Using GTFock for ParallelJK build with %d MPI processes and %d omp threads", total_number_processors, omp_get_max_threads());
     int density_matrices_per_process = options.get_int("DENSITY_MATRICES_PER_PROCESS");
     int subgroup_number              = options.get_int("NUMBER_OF_SUBGROUPS");
@@ -131,7 +131,7 @@ psi::MinimalInterface::MinimalInterface(const int NMats,
 
 void psi::MinimalInterface::SetP(std::vector<SharedMatrix>& Ps){
    int return_flag = 0;
-   int which_processor_group = (psi::WorldComm->GetComm()->Me() % subgroup_ ) + 1;
+   int which_processor_group = (GlobalComm_->Me() % subgroup_ ) + 1;
    std::vector<int> my_density_chunk = subgroup_to_density_[which_processor_group];
    size_t my_group_size = (Ps.size() < 4 ? Ps.size() : my_density_chunk.size());
    outfile->Printf("\n SetP: Ps_size: %d my_group_size: %d", Ps.size(), my_group_size);
@@ -180,11 +180,6 @@ void psi::MinimalInterface::GenGetCall(
       memset(Block,0.0,sizeof(double)*nrows*ncols);
       int return_flag = (int) PFock_getMat(PFock_,(PFockMatType_t)value,i,StartRow_,
                   EndRow_,StartCol_,EndCol_,Stride_,Block);
-      if(JorK.size() > 4) {
-        outfile->Printf("\n Printing in GenGetCall with %d", JorK.size());
-        for(int i = 0; i < nrows * ncols; i++)
-            outfile->Printf("\n Block[%d] = %8.8f", i, Block[i]);
-      }
       if(return_flag != 0)
       {
         outfile->Printf("\n PFock_getMat failed");
@@ -194,70 +189,58 @@ void psi::MinimalInterface::GenGetCall(
    }
    delete [] Block;
 }
-
-
 void psi::MinimalInterface::GetJ(std::vector<SharedMatrix>& Js){
-   int myrank = 0;
-   MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
+   int myrank = GlobalComm_->Me();
    int which_processor_group = (myrank % subgroup_ ) + 1;
    std::vector<int> my_density_chunk = subgroup_to_density_[which_processor_group];
    size_t my_group_size = ( Js.size() < 4 ) ? Js.size() : my_density_chunk.size();
-   std::vector<SharedMatrix> J_subset(my_group_size, 0);
+   std::vector<SharedMatrix> J_subset;
    int count = 0;
    if(my_group_size == Js.size())
    {
        GenGetCall(Js,(int)PFOCK_MAT_TYPE_J);
+       for(size_t i = 0; i < my_group_size; i++)
+        Js[i]->scale(0.5);
    }
    else {
        for(auto my_density : my_density_chunk)
-           J_subset[count] = Js[my_density];
+           J_subset.push_back(J_subset);
+       GenGetCall(J_subset,(int)PFOCK_MAT_TYPE_J);
+       for(size_t i =0; i < my_group_size;i++)
+       {
+            J_subset[i]->scale(0.5);
+            my_density_index = (my_group_size == Js.size()) ? i : my_density_chunk[i];
+            Js[my_density_index] = J_subset[i];
+       }
    }
    
-   int my_density_index = 0;
-   for(size_t i =0; i < my_group_size;i++)
-   {
-        if(my_group_size == Js.size()) 
-        {
-          my_density_index = i;
-          Js[i]->scale(0.5);
-        }
-        else {
-          my_density_index = my_density_chunk[i];
-          Js[my_density_index]->scale(0.5);
-        }
-   }
 }
 
 void psi::MinimalInterface::GetK(std::vector<SharedMatrix>& Ks){
-   int myrank = 0;
-   MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
+   int myrank = GlobalComm_->Me();
    int which_processor_group = (myrank % subgroup_ ) + 1;
    std::vector<int> my_density_chunk = subgroup_to_density_[which_processor_group];
 
    size_t my_group_size = (Ks.size() < 4 ? Ks.size() : my_density_chunk.size());
-   std::vector<SharedMatrix> K_subset(my_group_size, 0);
+   std::vector<SharedMatrix> K_subset;
    int count = 0;
    if(my_group_size == Ks.size())
    {
        GenGetCall(Ks,(int)PFOCK_MAT_TYPE_K);
+       for(size_t i = 0; i < mygroup_size; i++)
+           Ks[my_density_index]->scale(-1.0);
    }
    else {
        for(auto my_density : my_density_chunk)
-           K_subset[count] = Ks[my_density];
+           K_subset.push_back(Ks[my_density]);
+       GenGetCall(K_subset);
+       for(size_t i =0; i < my_group_size;i++)
+       {
+            K_subset[i]->scale(-1.0);
+            my_density_index = my_density_chunk[i];
+            Ks[my_density_index] = K_subset[i];
+       }
    }
-   int my_density_index = 0;
-   for(size_t i =0; i < my_group_size;i++)
-   {
-        if(my_group_size == Ks.size()) 
-        {
-          my_density_index = i;
-          Ks[i]->scale(-1.0);
-        }
-        else {
-          my_density_index = my_density_chunk[i];
-          Ks[my_density_index]->scale(-1.0);
-        }
-    }
 }
 void psi::MinimalInterface::MyBlock(double **Buffer,
                                     SharedMatrix Matrix){

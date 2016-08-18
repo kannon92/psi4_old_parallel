@@ -1224,6 +1224,17 @@ PFockStatus_t PFock_getMat(PFock_t pfock, PFockMatType_t type,
     
     ga = pfock->gatable[type];
     NGA_Get(ga[index], lo, hi, mat, ld);
+    if(index > 4) 
+    {
+        double one_norm = 0.0;
+        for(int nc = 0; nc < (rowend - rowstart + 1) * (colend - colend + 1); nc++)
+        {
+            one_norm += mat[nc];
+        }
+    int myrank = 0;
+    MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
+    printf("\n P%d ind: %d type: %d rowstart: %d rowend: %d colstart: %d colend: %d stride: %d one_norm: %8.8f", myrank, index, (int) type, rowstart, rowend, colstart, colend, stride, one_norm);
+    }
 
 #ifndef __SCF__
     if (PFOCK_MAT_TYPE_F == type) {
