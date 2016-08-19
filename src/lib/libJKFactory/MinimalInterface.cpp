@@ -236,13 +236,7 @@ void psi::MinimalInterface::GetJ(std::vector<SharedMatrix>& Js){
        for(int i = 0; i < Js.size(); i++)
        {
            MPI_Bcast(&Js[i]->pointer()[0][0], NBasis_ * NBasis_, MPI_DOUBLE, 0, MPI_COMM_WORLD);
-           ///if(GlobalComm_->Me() == 1)
-               //printf("\n J_wtf[%d] = %8.8f Js[%d] = %8.8f", i, J_wtf[i]->rms(), i, Js[i]->rms());
        }
-       for(int i = 0; i < Js.size(); i++)
-           outfile->Printf("\n Js[%d] = %8.8f", i, Js[i]->rms());
-
-       
    }
 }
 void psi::MinimalInterface::GetK(std::vector<SharedMatrix>& Ks){
@@ -355,9 +349,11 @@ void psi::MinimalInterface::create_communicators(int NMats, int density_matrices
     {
         printf("\n You are trying to recursively create many subcommuncators");
         printf("\n WTF Kevin!!");
+        throw PSIEXCEPTION(" Trying to recursively create subcommunicators");
+
     }
 
-    if(density_matrices_per_process == 0 or NMats < 4 or global_proc == 1 or subgroup_number == 0)
+    if(NMats < 4 or global_proc == 1 or density_matrices_per_process == 0 or subgroup_number == 0)
     {
         ///Create A new communciator that copies the COMM_WORLD
         /// Basically done so same code can be used for sub comm
@@ -367,8 +363,30 @@ void psi::MinimalInterface::create_communicators(int NMats, int density_matrices
         Comm_ = psi::WorldComm->GetComm()->MakeComm(subgroup_, "WorldComm");
     }
     else {
+        if(subgroup_number != 0 && density_matrices_per_process !=0)
+        {
+              if(NMats != subgroup_number * density_matrices_per_process)
+              {
+                  outfile->Printf("\n Invalid group numbers and density_matrices_per_process");
+                  outfile->Printf("\n You specifed %d subgroup_number and %d density_matrices_per_process", subgroup_number, density_matrices_per_process);
+                  throw PSIEXCEPTION("Invalid parameters for Subgroup CASSCF computation");
+              }
+
+        }
+        else if (subgroup_number == 0 && density_matrices_per_process != 0)
+        {
+            subgroup_number = NMats / density_matrices_per_process ;
+        }
+        else if(subgroup_number != 0 && density_matrices_per_process == 0)
+        {
+            density_matrices_per_process = NMats / subgroup_number ;
+        }
+        else {
+            outfile->Printf("\n You did not specify either subgroup or density");
+            outfile->Printf("\n You need to figure out what is going on");
+            throw PSIEXCEPTION("Invalid parameters for Subgroup CASSCF computation");
+        }
         /// Compute number of processor groups
-        subgroup_ = NMats / density_matrices_per_process;
         subgroup_ = subgroup_number;
         if(NMats % density_matrices_per_process != 0)
         {
@@ -379,7 +397,8 @@ void psi::MinimalInterface::create_communicators(int NMats, int density_matrices
         int total_number_process = psi::WorldComm->GetComm()->NProc();
         int processor_per_group = total_number_process / subgroup_;
 
-        outfile->Printf("\n subgroup: %d total_number_process: %d processor_per_group: %d", subgroup_, total_number_process, processor_per_group);
+        //outfile->Printf("\n subgroup: %d total_number_process: %d processor_per_group: %d", subgroup_, total_number_process, processor_per_group);
+        outfile->Printf("\n Running subgroup casscf algorithm with %d subgroups and %d processors per group", subgroup_, processor_per_group);
         int which_processor_group = (psi::WorldComm->GetComm()->Me() % subgroup_);
         std::string Comm_subgroup = "SubDensComm" + std::to_string(which_processor_group);
         Comm_ = psi::WorldComm->GetComm()->MakeComm(which_processor_group, Comm_subgroup);
@@ -395,30 +414,19 @@ void psi::MinimalInterface::create_communicators(int NMats, int density_matrices
                 std::iota(density_list.begin(), density_list.end(), (i-1) * density_matrices_per_process);
             }
             subgroup_to_density_[i] = density_list;
-            outfile->Printf("\n subgroup_: %d subgroup: %d", subgroup_, i);
-            for(auto subgroup_vector : subgroup_to_density_[i])
-                outfile->Printf(" %d ", subgroup_vector);
-         }
-         for(int i = 1 ; i < subgroup_ + 1; i++)
-         {
-             std::vector<int> local_processor_list(processor_per_group, 0);
-             int index=0;
-             for(int rank = 0; rank < GlobalComm_->NProc(); rank++){
-                 if(rank % subgroup_ == (i - 1))
-                 {
-                    if(index > processor_per_group) 
-                    {
-                         outfile->Printf("\n index: %d processor_per_group: %d rank: %d");
-                    }
-                    local_processor_list[index++] = rank;
-                 }
-             }
-             subgroup_to_process_[i] = local_processor_list;
-         }
-
-    for(int i = 1; i < subgroup_ + 1; i++)
-        for(int proc = 0; proc < subgroup_to_process_[i].size(); proc++)
-            outfile->Printf("\n subgroup_to_process_[%d][%d] = %d", i, proc, subgroup_to_process_[i][proc]);
+        }
+        for(int i = 1 ; i < subgroup_ + 1; i++)
+        {
+            std::vector<int> local_processor_list(processor_per_group, 0);
+            int index=0;
+            for(int rank = 0; rank < GlobalComm_->NProc(); rank++){
+                if(rank % subgroup_ == (i - 1))
+                {
+                   local_processor_list[index++] = rank;
+                }
+            }
+            subgroup_to_process_[i] = local_processor_list;
+        }
     }
 }
 void psi::MinimalInterface::create_processor_list(std::vector<int>& processor_list, int &processor_size, int total_number_density)

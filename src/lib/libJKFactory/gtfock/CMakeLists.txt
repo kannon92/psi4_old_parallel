@@ -18,10 +18,10 @@ add_definitions(-D__ALIGNLEN__=64)
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -m64")
 
 #If we have an Intel compiler also add this one:
-#if(${CMAKE_C_COMPILER_ID} STREQUAL "Intel")
-#  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -xHost -fasm-blocks -qno-offload=none")
-#  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -xHost ")
-#endif() 
+if(${CMAKE_C_COMPILER_ID} STREQUAL "Intel")
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -xHost -fasm-blocks -qno-offload=none")
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -xHost ")
+endif() 
 #"/home/hann965/src/gtfock/global/global_gcc/lib/libga.a"
 #"/home/hann965/src/gtfock/global/global_gcc/lib/libarmci.a"
 #)
