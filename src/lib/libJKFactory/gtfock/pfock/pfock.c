@@ -39,8 +39,6 @@ static PFockStatus_t init_fock(PFock_t pfock)
     int nshells_p;
         
     myrank = GA_Nodeid();
-    //printf("\n my_rank: %d", myrank);
-    //printf("\n my_size: %d", GA_Nnodes());
     nbp_p = pfock->nbp_p;
     nbp_row = pfock->nprow * nbp_p;
     nbp_col = pfock->npcol *nbp_p;
@@ -234,7 +232,6 @@ static PFockStatus_t repartition_fock (PFock_t pfock)
     // for row partition
     int *newrowptr = (int *)malloc (sizeof(int) * (nprow + 1));
     int *newcolptr = (int *)malloc (sizeof(int) * (npcol + 1));
-    //printf("NNZ_PARTITION P%d of %d nbp_p: %d", myrank, mysize,nbp_p);
     ret = nnz_partition (nshells, nnz, nbp_p, shellptr, nprow, newrowptr);    
     if (ret != 0)
     {
@@ -810,17 +807,12 @@ PFockStatus_t init_GA(int nbf, int nprow, int npcol,
             return PFOCK_STATUS_INIT_FAILED;
         }
     }
-    //for(int i = 0; i < processor_size; i++)
-        //printf("\nGA Processor_list[%d] = %d", i, processor_list[i]);
 
     MPI_Comm ga_mpi_comm;
     ga_mpi_comm = GA_MPI_Comm();
     int myrank, mysize;
     MPI_Comm_rank(ga_mpi_comm, &myrank);
     MPI_Comm_size(ga_mpi_comm, &mysize);
-    //printf("\n SUBGROUP TEST BEFORE_DEFAULT: myrank: %d mysize: %d", myrank, mysize);
-
-    //printf("\n GA_Nodeid(): %d PGroup_create()", GA_Nodeid());
     if(processor_size != mysize)
     {
         int my_pgroup_handle = GA_Pgroup_create(processor_list, processor_size);
@@ -1233,7 +1225,6 @@ PFockStatus_t PFock_getMat(PFock_t pfock, PFockMatType_t type,
         }
     int myrank = 0;
     MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
-    printf("\n P%d ind: %d type: %d rowstart: %d rowend: %d colstart: %d colend: %d stride: %d one_norm: %8.8f", myrank, index, (int) type, rowstart, rowend, colstart, colend, stride, one_norm);
     }
 
 #ifndef __SCF__
@@ -1996,104 +1987,109 @@ PFockStatus_t PFock_getMemorySize(PFock_t pfock, double *mem_cpu)
 PFockStatus_t PFock_getStatistics(PFock_t pfock)
 {
     int myrank = GA_Nodeid();
-    //MPI_Comm_rank (MPI_COMM_WORLD, &myrank);
+    int globalsize = 0;
+    MPI_Comm_size (MPI_COMM_WORLD, &globalsize);
     
     // statistics
-    MPI_Gather (&pfock->steals, 1, MPI_DOUBLE,
-        pfock->mpi_steals, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
-    MPI_Gather (&pfock->stealfrom, 1, MPI_DOUBLE,
-        pfock->mpi_stealfrom, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
-    MPI_Gather (&pfock->usq, 1, MPI_DOUBLE, 
-        pfock->mpi_usq, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
-    MPI_Gather (&pfock->uitl, 1, MPI_DOUBLE, 
-        pfock->mpi_uitl, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
-    MPI_Gather (&pfock->timepass, 1, MPI_DOUBLE, 
-        pfock->mpi_timepass, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
-    MPI_Gather (&pfock->timecomp, 1, MPI_DOUBLE, 
-        pfock->mpi_timecomp, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
-    MPI_Gather (&pfock->timeinit, 1, MPI_DOUBLE, 
-        pfock->mpi_timeinit, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
-    MPI_Gather (&pfock->timereduce, 1, MPI_DOUBLE, 
-        pfock->mpi_timereduce, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
-    MPI_Gather (&pfock->timegather, 1, MPI_DOUBLE, 
-        pfock->mpi_timegather, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
-    MPI_Gather (&pfock->timescatter, 1, MPI_DOUBLE, 
-        pfock->mpi_timescatter, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
-    MPI_Gather (&pfock->volumega, 1, MPI_DOUBLE, 
-        pfock->mpi_volumega, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
-    MPI_Gather (&pfock->ngacalls, 1, MPI_DOUBLE, 
-        pfock->mpi_ngacalls, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
-    if (myrank == 0) {
-        double total_timepass;
-        double max_timepass;
-        double total_timereduce;
-        double total_timeinit;
-        double total_timecomp;
-        double total_timegather;
-        double total_timescatter;
-        double total_usq;
-        double max_usq;
-        double total_uitl;
-        double max_uitl;
-        double total_steals;
-        double total_stealfrom;
-        double total_ngacalls;
-        double total_volumega;
-        for (int i = 0; i < pfock->nprocs; i++) {
-            total_timepass += pfock->mpi_timepass[i];
-            max_timepass =
-                max_timepass < pfock->mpi_timepass[i] ?
-                    pfock->mpi_timepass[i] : max_timepass;            
-            total_usq += pfock->mpi_usq[i];
-            max_usq = 
-                max_usq < pfock->mpi_usq[i] ? pfock->mpi_usq[i] : max_usq;          
-            total_uitl += pfock->mpi_uitl[i];
-            max_uitl = 
-                max_uitl < pfock->mpi_uitl[i] ? pfock->mpi_uitl[i] : max_uitl;           
-            total_steals += pfock->mpi_steals[i];
-            total_stealfrom += pfock->mpi_stealfrom[i];
-            total_timecomp += pfock->mpi_timecomp[i];
-            total_timeinit += pfock->mpi_timeinit[i];
-            total_timereduce += pfock->mpi_timereduce[i];
-            total_timegather += pfock->mpi_timegather[i];
-            total_timescatter += pfock->mpi_timescatter[i];
-            total_ngacalls += pfock->mpi_ngacalls[i];
-            total_volumega += pfock->mpi_volumega[i];
+    if(GA_Nnodes() == globalsize)
+    {
+        MPI_Gather (&pfock->steals, 1, MPI_DOUBLE,
+            pfock->mpi_steals, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+        MPI_Gather (&pfock->stealfrom, 1, MPI_DOUBLE,
+            pfock->mpi_stealfrom, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+        MPI_Gather (&pfock->usq, 1, MPI_DOUBLE, 
+            pfock->mpi_usq, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+        MPI_Gather (&pfock->uitl, 1, MPI_DOUBLE, 
+            pfock->mpi_uitl, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+        MPI_Gather (&pfock->timepass, 1, MPI_DOUBLE, 
+            pfock->mpi_timepass, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+        MPI_Gather (&pfock->timecomp, 1, MPI_DOUBLE, 
+            pfock->mpi_timecomp, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+        MPI_Gather (&pfock->timeinit, 1, MPI_DOUBLE, 
+            pfock->mpi_timeinit, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+        MPI_Gather (&pfock->timereduce, 1, MPI_DOUBLE, 
+            pfock->mpi_timereduce, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+        MPI_Gather (&pfock->timegather, 1, MPI_DOUBLE, 
+            pfock->mpi_timegather, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+        MPI_Gather (&pfock->timescatter, 1, MPI_DOUBLE, 
+            pfock->mpi_timescatter, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+        MPI_Gather (&pfock->volumega, 1, MPI_DOUBLE, 
+            pfock->mpi_volumega, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+        MPI_Gather (&pfock->ngacalls, 1, MPI_DOUBLE, 
+            pfock->mpi_ngacalls, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+        if (myrank == 0) {
+            double total_timepass;
+            double max_timepass;
+            double total_timereduce;
+            double total_timeinit;
+            double total_timecomp;
+            double total_timegather;
+            double total_timescatter;
+            double total_usq;
+            double max_usq;
+            double total_uitl;
+            double max_uitl;
+            double total_steals;
+            double total_stealfrom;
+            double total_ngacalls;
+            double total_volumega;
+            for (int i = 0; i < pfock->nprocs; i++) {
+                total_timepass += pfock->mpi_timepass[i];
+                max_timepass =
+                    max_timepass < pfock->mpi_timepass[i] ?
+                        pfock->mpi_timepass[i] : max_timepass;            
+                total_usq += pfock->mpi_usq[i];
+                max_usq = 
+                    max_usq < pfock->mpi_usq[i] ? pfock->mpi_usq[i] : max_usq;          
+                total_uitl += pfock->mpi_uitl[i];
+                max_uitl = 
+                    max_uitl < pfock->mpi_uitl[i] ? pfock->mpi_uitl[i] : max_uitl;           
+                total_steals += pfock->mpi_steals[i];
+                total_stealfrom += pfock->mpi_stealfrom[i];
+                total_timecomp += pfock->mpi_timecomp[i];
+                total_timeinit += pfock->mpi_timeinit[i];
+                total_timereduce += pfock->mpi_timereduce[i];
+                total_timegather += pfock->mpi_timegather[i];
+                total_timescatter += pfock->mpi_timescatter[i];
+                total_ngacalls += pfock->mpi_ngacalls[i];
+                total_volumega += pfock->mpi_volumega[i];
+            }
+            double tsq = pfock->nshells;
+            tsq = ((tsq + 1) * tsq/2.0 + 1) * tsq * (tsq + 1)/4.0;
+            printf("    PFock Statistics:\n");
+            printf("      average totaltime   = %.3g\n"
+                   "      average timegather  = %.3g\n"
+                   "      average timeinit    = %.3g\n"
+                   "      average timecomp    = %.3g\n"
+                   "      average timereduce  = %.3g\n"
+                   "      average timescatter = %.3g\n"
+                   "      comp/total = %.3g\n",
+                   total_timepass/pfock->nprocs,
+                   total_timegather/pfock->nprocs,
+                   total_timeinit/pfock->nprocs,
+                   total_timecomp/pfock->nprocs,
+                   total_timereduce/pfock->nprocs,
+                   total_timescatter/pfock->nprocs,
+                   total_timecomp/total_timepass);
+            printf("      usq = %.4g (lb = %.3g)\n"
+                   "      uitl = %.4g (lb = %.3g)\n"
+                   "      nsq = %.4g (screening = %.3g)\n",
+                   total_usq, max_usq/(total_usq/pfock->nprocs),
+                   total_uitl, max_uitl/(total_uitl/pfock->nprocs),
+                   tsq, total_usq/tsq);
+            printf("      load blance = %.3lf\n",
+                   max_timepass/(total_timepass/pfock->nprocs));
+            printf("      steals = %.3g (average = %.3g)\n"
+                   "      stealfrom = %.3g (average = %.3g)\n"
+                   "      GAcalls = %.3g\n"
+                   "      GAvolume %.3g MB\n",
+                   total_steals, total_steals/pfock->nprocs,
+                   total_stealfrom, total_stealfrom/pfock->nprocs,
+                   total_ngacalls/pfock->nprocs,
+                   total_volumega/pfock->nprocs/1024.0/1024.0);
         }
-        double tsq = pfock->nshells;
-        tsq = ((tsq + 1) * tsq/2.0 + 1) * tsq * (tsq + 1)/4.0;
-        printf("    PFock Statistics:\n");
-        printf("      average totaltime   = %.3g\n"
-               "      average timegather  = %.3g\n"
-               "      average timeinit    = %.3g\n"
-               "      average timecomp    = %.3g\n"
-               "      average timereduce  = %.3g\n"
-               "      average timescatter = %.3g\n"
-               "      comp/total = %.3g\n",
-               total_timepass/pfock->nprocs,
-               total_timegather/pfock->nprocs,
-               total_timeinit/pfock->nprocs,
-               total_timecomp/pfock->nprocs,
-               total_timereduce/pfock->nprocs,
-               total_timescatter/pfock->nprocs,
-               total_timecomp/total_timepass);
-        printf("      usq = %.4g (lb = %.3g)\n"
-               "      uitl = %.4g (lb = %.3g)\n"
-               "      nsq = %.4g (screening = %.3g)\n",
-               total_usq, max_usq/(total_usq/pfock->nprocs),
-               total_uitl, max_uitl/(total_uitl/pfock->nprocs),
-               tsq, total_usq/tsq);
-        printf("      load blance = %.3lf\n",
-               max_timepass/(total_timepass/pfock->nprocs));
-        printf("      steals = %.3g (average = %.3g)\n"
-               "      stealfrom = %.3g (average = %.3g)\n"
-               "      GAcalls = %.3g\n"
-               "      GAvolume %.3g MB\n",
-               total_steals, total_steals/pfock->nprocs,
-               total_stealfrom, total_stealfrom/pfock->nprocs,
-               total_ngacalls/pfock->nprocs,
-               total_volumega/pfock->nprocs/1024.0/1024.0);
+        return PFOCK_STATUS_SUCCESS;
     }
+    else { return PFOCK_STATUS_INTERNAL_ERROR;}
     
-    return PFOCK_STATUS_SUCCESS;
 }

@@ -79,16 +79,16 @@ psi::MinimalInterface::MinimalInterface(const int NMats,
                           EndRow_(0),EndCol_(0),Stride_(0),NBasis_(0){
     //Trying to parallelize over the density matrices
     //Try to split up communicators
-    psi::Options& options = psi::Process::environment.options;
-    //GA_Initialize();
     ///How many density matrices to have GTFock be responsible for
     ///If user does not specify this, assume GTFock handles all density matrices
+    psi::Options& options = psi::Process::environment.options;
     GlobalComm_ = psi::WorldComm->GetComm();
     int total_number_processors = GlobalComm_->NProc();
     int global_me = GlobalComm_->Me();
     outfile->Printf("\n Using GTFock for ParallelJK build with %d MPI processes and %d omp threads", total_number_processors, omp_get_max_threads());
     int density_matrices_per_process = options.get_int("DENSITY_MATRICES_PER_PROCESS");
     int subgroup_number              = options.get_int("NUMBER_OF_SUBGROUPS");
+    ///Create a subgroup that will process density_matrices_per_process
     create_communicators(NMats, density_matrices_per_process, subgroup_number);
     SetUp();
     SplitProcs(NPRow_,NPCol_);
@@ -105,20 +105,20 @@ psi::MinimalInterface::MinimalInterface(const int NMats,
    //a negative value.
    int NBlkFock=-1;
    Timer pfock_create;
+   /// This will tell which subgroup I am on
    int which_processor_group = (global_me % subgroup_);
+   ///Since subgroup_ starts from 1, need to increment by 1
    size_t my_group_size = subgroup_to_density_[which_processor_group + 1].size();
    std::vector<int> processor_list;
    int processor_size = 0;
    create_processor_list(processor_list, processor_size, NMats);
-   printf("\n P%d which_processor_group: %d my_group_size: %lu", global_me, which_processor_group, my_group_size);
-   for(int i = 0; i < processor_size; i++)
-        printf("\n P%d processor_list[%d] = %d", global_me, i, processor_list[i]);
    int return_flag = (int) PFock_create(GTBasis_,NPRow_,NPCol_,NBlkFock,IntThresh,
          static_cast<int>(my_group_size) ,AreSymm,&PFock_, &processor_list[0], processor_size);
 
    if(return_flag != 0)
    {
-       
+       for(int i = 0; i < processor_size; i++)
+           printf("\n P%d processor_list[%d] = %d", global_me, i, processor_list[i]);
        outfile->Printf("\n Something happened during PFock_create"); 
        outfile->Printf("\n GTFock error is %d", return_flag);
        outfile->Printf("\n NMats: %d AreSymm: %d", NMats, AreSymm);
@@ -132,18 +132,17 @@ void psi::MinimalInterface::SetP(std::vector<SharedMatrix>& Ps){
    int which_processor_group = (GlobalComm_->Me() % subgroup_ ) + 1;
    std::vector<int> my_density_chunk = subgroup_to_density_[which_processor_group];
    size_t my_group_size = (Ps.size() < 4 ? Ps.size() : my_density_chunk.size());
-   outfile->Printf("\n SetP: Ps_size: %d my_group_size: %d", Ps.size(), my_group_size);
    return_flag = (int)PFock_setNumDenMat(my_group_size,PFock_);
    if(return_flag != 0)
    {
+        outfile->Printf("\n SetP: Ps_size: %d my_group_size: %d", Ps.size(), my_group_size);
         outfile->Printf("\n PFock_setNumDenMat gave an error.");
         throw PSIEXCEPTION("PFock_setNumDenMat is FUBAR");
    }
    double* Buffer;
    for(size_t i=0;i<my_group_size;i++){
-   //for(size_t i=0;i<Ps.size();i++){
-      //outfile->Printf("\n i: %d my_density_chunk[i]: %d", i, my_density_chunk[i]);
       int my_density_index = 0;
+      ///If my_group_size is size of Ps, then don't call special shit
       if(my_group_size == Ps.size()) 
       {
         my_density_index = i;
@@ -399,14 +398,28 @@ void psi::MinimalInterface::create_communicators(int NMats, int density_matrices
             outfile->Printf("\n subgroup_: %d subgroup: %d", subgroup_, i);
             for(auto subgroup_vector : subgroup_to_density_[i])
                 outfile->Printf(" %d ", subgroup_vector);
-            for(int rank = 0; rank < GlobalComm_->NProc(); rank++)
-            {
-                std::vector<int> local_processor_list(processor_per_group, 0);
-            }
+         }
+         for(int i = 1 ; i < subgroup_ + 1; i++)
+         {
+             std::vector<int> local_processor_list(processor_per_group, 0);
+             int index=0;
+             for(int rank = 0; rank < GlobalComm_->NProc(); rank++){
+                 if(rank % subgroup_ == (i - 1))
+                 {
+                    if(index > processor_per_group) 
+                    {
+                         outfile->Printf("\n index: %d processor_per_group: %d rank: %d");
+                    }
+                    local_processor_list[index++] = rank;
+                 }
+             }
+             subgroup_to_process_[i] = local_processor_list;
+         }
 
-        }
+    for(int i = 1; i < subgroup_ + 1; i++)
+        for(int proc = 0; proc < subgroup_to_process_[i].size(); proc++)
+            outfile->Printf("\n subgroup_to_process_[%d][%d] = %d", i, proc, subgroup_to_process_[i][proc]);
     }
-
 }
 void psi::MinimalInterface::create_processor_list(std::vector<int>& processor_list, int &processor_size, int total_number_density)
 {
@@ -424,30 +437,16 @@ void psi::MinimalInterface::create_processor_list(std::vector<int>& processor_li
    }
    else {
         processor_size = ( total_size % subgroup_ == 0) ? total_size / subgroup_ : -1;
-        processor_size = 1;
         if(processor_size == -1)
         {
             printf("\n total_number_density: %d subgroup_: %d total_number / subgroup_: %d", total_size, subgroup_,total_size / subgroup_);
+            printf("\n total_number_density: %d subgroup_: %d total_number / subgroup_: %d", total_size, subgroup_,total_size / subgroup_);
             throw PSIEXCEPTION("GTFock with subgroups does not work with these numbers");
         }
-            printf("\n total_number_density: %d subgroup_: %d total_number / subgroup_: %d", total_size, subgroup_,total_size / subgroup_);
-        processor_list.resize(processor_size);
         int which_processor_group = (total_rank % subgroup_);
         int total_number_process = total_size;
-        processor_list[0] = total_rank;
-        //subgroup_to_process_[which_processor_group + 1] = processor_list;
+        processor_list = subgroup_to_process_[which_processor_group + 1];
 
-        printf("\n Group%d ", which_processor_group + 1);
-        for(int i = 0; i < processor_size; i++)
-            printf("\n processor_list[%d] = %d", i, processor_list[i]);
-
-        
-        for(int i = 1; i < subgroup_ + 1; i++) {
-            std::vector<int> process_list(1, 0);
-            process_list[0] = i - 1;
-            subgroup_to_process_[i] = process_list;
-            printf("\n subgroup_to_process_[%d] = %d", i, process_list[0]);
-        }
         
     }
 }
