@@ -70,6 +70,7 @@ class MinimalInterface{
       boost::shared_ptr<const LibParallel::Communicator> GlobalComm_;
       int subgroup_ = 1;
       std::map<int, std::vector<int> > subgroup_to_density_;
+      std::map<int, std::vector<int> > subgroup_to_process_;
       void create_communicators(int NMats, int density_matrices, int subgroup_number);
       void create_processor_list(std::vector<int>& processor_list, int &processor_size, int total_number_density);
 

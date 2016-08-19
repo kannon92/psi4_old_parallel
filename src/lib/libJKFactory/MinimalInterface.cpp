@@ -68,11 +68,9 @@ void psi::MinimalInterface::Vectorize(
 }
 
 psi::MinimalInterface::~MinimalInterface(){
-   printf("\n Calling destructor");
    Comm_->FreeComm();
    PFock_destroy(PFock_);
    CInt_destroyBasisSet(GTBasis_);
-   //GA_Terminate();
 }
 
 psi::MinimalInterface::MinimalInterface(const int NMats,
@@ -156,7 +154,7 @@ void psi::MinimalInterface::SetP(std::vector<SharedMatrix>& Ps){
         MyBlock(&Buffer, Ps[my_density_index]);
       }
       return_flag = (int)PFock_putDenMat(StartRow_,EndRow_,
-                           StartCol_,EndCol_,Stride_,Buffer,my_density_index,PFock_);
+                           StartCol_,EndCol_,Stride_,Buffer,i,PFock_);
 
    }
    return_flag = (int)PFock_commitDenMats(PFock_);
@@ -190,32 +188,64 @@ void psi::MinimalInterface::GenGetCall(
    delete [] Block;
 }
 void psi::MinimalInterface::GetJ(std::vector<SharedMatrix>& Js){
+
    int myrank = GlobalComm_->Me();
    int which_processor_group = (myrank % subgroup_ ) + 1;
    std::vector<int> my_density_chunk = subgroup_to_density_[which_processor_group];
    size_t my_group_size = ( Js.size() < 4 ) ? Js.size() : my_density_chunk.size();
-   std::vector<SharedMatrix> J_subset;
    int count = 0;
+   ///If J is computed on one subprocess, do below
    if(my_group_size == Js.size())
    {
        GenGetCall(Js,(int)PFOCK_MAT_TYPE_J);
        for(size_t i = 0; i < my_group_size; i++)
         Js[i]->scale(0.5);
    }
+   ///Otherwise, you need to pass chunk of Js to GenGetCall
+   ///Then Broadcast all that information to Js
    else {
+       std::vector<int> my_density_chunk = subgroup_to_density_[which_processor_group];
+       std::vector<SharedMatrix> J_subset;
+       size_t my_group_size =  my_density_chunk.size();
+       int count = 0;
        for(auto my_density : my_density_chunk)
-           J_subset.push_back(J_subset);
+           J_subset.push_back(Js[my_density]);
        GenGetCall(J_subset,(int)PFOCK_MAT_TYPE_J);
-       for(size_t i =0; i < my_group_size;i++)
+       for(size_t i =0; i < my_group_size; i++)
        {
-            J_subset[i]->scale(0.5);
-            my_density_index = (my_group_size == Js.size()) ? i : my_density_chunk[i];
-            Js[my_density_index] = J_subset[i];
+           int my_density_index = my_density_chunk[i];
+           J_subset[i]->scale(0.5);
+           if(GlobalComm_->Me() == 0)
+           {
+               Js[my_density_index] = J_subset[i];
+           }
+           else {
+               MPI_Send(&J_subset[i]->pointer()[0][0], NBasis_ * NBasis_, MPI_DOUBLE, 0, my_density_index, MPI_COMM_WORLD);
+           }
        }
-   }
-   
-}
+       if(GlobalComm_->Me() == 0)
+       {
+           for(int group = 2; group < subgroup_ + 1; group++){
+               std::vector<int> my_density_chunk = subgroup_to_density_[group];
+               std::vector<int> my_process_list  = subgroup_to_process_[group];
+               for(int i = 0; i < my_density_chunk.size(); i++) {
+                   int my_true_index = my_density_chunk[i];
+                   MPI_Recv(&Js[my_true_index]->pointer()[0][0], NBasis_ * NBasis_, MPI_DOUBLE, my_process_list[0], my_true_index, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+               }
+           }
+       }
+       for(int i = 0; i < Js.size(); i++)
+       {
+           MPI_Bcast(&Js[i]->pointer()[0][0], NBasis_ * NBasis_, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+           ///if(GlobalComm_->Me() == 1)
+               //printf("\n J_wtf[%d] = %8.8f Js[%d] = %8.8f", i, J_wtf[i]->rms(), i, Js[i]->rms());
+       }
+       for(int i = 0; i < Js.size(); i++)
+           outfile->Printf("\n Js[%d] = %8.8f", i, Js[i]->rms());
 
+       
+   }
+}
 void psi::MinimalInterface::GetK(std::vector<SharedMatrix>& Ks){
    int myrank = GlobalComm_->Me();
    int which_processor_group = (myrank % subgroup_ ) + 1;
@@ -224,23 +254,26 @@ void psi::MinimalInterface::GetK(std::vector<SharedMatrix>& Ks){
    size_t my_group_size = (Ks.size() < 4 ? Ks.size() : my_density_chunk.size());
    std::vector<SharedMatrix> K_subset;
    int count = 0;
+   
    if(my_group_size == Ks.size())
    {
        GenGetCall(Ks,(int)PFOCK_MAT_TYPE_K);
-       for(size_t i = 0; i < mygroup_size; i++)
-           Ks[my_density_index]->scale(-1.0);
+       for(size_t i = 0; i < my_group_size; i++)
+           Ks[i]->scale(-1.0);
    }
-   else {
-       for(auto my_density : my_density_chunk)
-           K_subset.push_back(Ks[my_density]);
-       GenGetCall(K_subset);
-       for(size_t i =0; i < my_group_size;i++)
-       {
-            K_subset[i]->scale(-1.0);
-            my_density_index = my_density_chunk[i];
-            Ks[my_density_index] = K_subset[i];
-       }
-   }
+   else 
+       throw PSIEXCEPTION("Kevin has not implemented subgroup builds for Exchange yet");
+       //for(auto my_density : my_density_chunk)
+       //    K_subset.push_back(Ks[my_density]);
+       //GenGetCall(K_subset, (int)PFOCK_MAT_TYPE_K);
+       //for(size_t i =0; i < my_group_size;i++)
+       //{
+       //     K_subset[i]->scale(-1.0);
+       //     int my_density_index = my_density_chunk[i];
+       //     Ks[my_density_index] = K_subset[i];
+       //     //GlobalComm_->Bcast(&(*(Ks[my_density_index]))(0,0), NBasis_ * NBasis_, 0);
+       //     MPI_Bcast(&(Ks[my_density_index]->pointer()[0]), NBasis_ * NBasis_, MPI_DOUBLE, GlobalComm_->Me(), MPI_COMM_WORLD);
+       //}
 }
 void psi::MinimalInterface::MyBlock(double **Buffer,
                                     SharedMatrix Matrix){
@@ -273,9 +306,7 @@ void psi::MinimalInterface::Gather(SharedMatrix Result,
    SharedMatrix temp(new psi::Matrix(NBasis_,NBasis_));
    FillMat(temp,StartRow_,EndRow_,StartCol_,EndCol_,Block);
    //ConstSharedComm Comm=psi::WorldComm->GetComm();
-   GlobalComm_->AllReduce(&(*temp)(0,0),NBasis_*NBasis_,&(*Result)(0,0),LibParallel::ADD);
-   //MPI_Allreduce(&(temp->pointer()[0]), &(Result->pointer()[0]), NBasis_ * NBasis_, MPI_DOUBLE, MPI_ADD, MPI_COMM_WORLD);
-   //MPI_Comm_rank(density_comm_, &(temp->pointer()[0]), NBasis_ * NBasis_, &(Result->pointer()[0]), MPI_ADD);
+   Comm_->AllReduce(&(*temp)(0,0),NBasis_*NBasis_,&(*Result)(0,0),LibParallel::ADD);
 }
 
 void psi::MinimalInterface::BlockDims(const int NBasis){
@@ -340,6 +371,12 @@ void psi::MinimalInterface::create_communicators(int NMats, int density_matrices
         /// Compute number of processor groups
         subgroup_ = NMats / density_matrices_per_process;
         subgroup_ = subgroup_number;
+        if(NMats % density_matrices_per_process != 0)
+        {
+            outfile->Printf("\n Kevin has not implemented subgroups for cases when NMats % density != 0");
+            outfile->Printf("\n Choose your processors to be a multiple of %d", NMats / density_matrices_per_process);
+            throw PSIEXCEPTION("Please choose a multiple of subgroup_ for your processors");
+        }
         int total_number_process = psi::WorldComm->GetComm()->NProc();
         int processor_per_group = total_number_process / subgroup_;
 
@@ -362,6 +399,10 @@ void psi::MinimalInterface::create_communicators(int NMats, int density_matrices
             outfile->Printf("\n subgroup_: %d subgroup: %d", subgroup_, i);
             for(auto subgroup_vector : subgroup_to_density_[i])
                 outfile->Printf(" %d ", subgroup_vector);
+            for(int rank = 0; rank < GlobalComm_->NProc(); rank++)
+            {
+                std::vector<int> local_processor_list(processor_per_group, 0);
+            }
 
         }
     }
@@ -369,10 +410,8 @@ void psi::MinimalInterface::create_communicators(int NMats, int density_matrices
 }
 void psi::MinimalInterface::create_processor_list(std::vector<int>& processor_list, int &processor_size, int total_number_density)
 {
-   int total_size;
-   int total_rank;
-   MPI_Comm_size(MPI_COMM_WORLD, &total_size);
-   MPI_Comm_rank(MPI_COMM_WORLD, &total_rank);
+   int total_size = GlobalComm_->NProc();
+   int total_rank = GlobalComm_->Me();
 
    if(subgroup_ == 1)
    {
@@ -395,22 +434,21 @@ void psi::MinimalInterface::create_processor_list(std::vector<int>& processor_li
         processor_list.resize(processor_size);
         int which_processor_group = (total_rank % subgroup_);
         int total_number_process = total_size;
-        //for(int group = 1; group < subgroup_; group++)
-        //{
-        //    for(int rank = 0; rank < processor_size; rank++)
-        //    {
-        //        for(int proc = 0; proc < total_number_process; proc++)
-        //        {
-        //            if(proc % subgroup_ == group - 1)
-        //                processor_list[rank] = proc;
-        //        }
-        //    }
-        //}
         processor_list[0] = total_rank;
+        //subgroup_to_process_[which_processor_group + 1] = processor_list;
 
-        printf("\n Group%d ", which_processor_group);
+        printf("\n Group%d ", which_processor_group + 1);
         for(int i = 0; i < processor_size; i++)
             printf("\n processor_list[%d] = %d", i, processor_list[i]);
+
+        
+        for(int i = 1; i < subgroup_ + 1; i++) {
+            std::vector<int> process_list(1, 0);
+            process_list[0] = i - 1;
+            subgroup_to_process_[i] = process_list;
+            printf("\n subgroup_to_process_[%d] = %d", i, process_list[0]);
+        }
+        
     }
 }
 void MakeBasis(BasisSet** GTBasis, SharedBasis PsiBasis){
