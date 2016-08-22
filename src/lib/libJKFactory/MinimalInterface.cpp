@@ -353,7 +353,7 @@ void psi::MinimalInterface::create_communicators(int NMats, int density_matrices
 
     }
 
-    if(NMats < 4 or global_proc == 1 or density_matrices_per_process == 0 or subgroup_number == 0)
+    if(NMats < 4 or global_proc == 1 or (density_matrices_per_process == 0 and subgroup_number == 0))
     {
         ///Create A new communciator that copies the COMM_WORLD
         /// Basically done so same code can be used for sub comm
