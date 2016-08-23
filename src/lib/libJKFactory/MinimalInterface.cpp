@@ -139,6 +139,17 @@ void psi::MinimalInterface::SetP(std::vector<SharedMatrix>& Ps){
         outfile->Printf("\n PFock_setNumDenMat gave an error.");
         throw PSIEXCEPTION("PFock_setNumDenMat is FUBAR");
    }
+   if(my_group_size != Ps.size())
+   {
+       for(auto dens : subgroup_to_density_[which_processor_group])
+       {
+           printf("\n P%d Dens: %d", GlobalComm_->Me(), dens);
+       }
+       for(auto proc : subgroup_to_process_[which_processor_group])
+       {
+           printf("\n P%d Proc: %d", GlobalComm_->Me(), proc);
+       }
+   }
    double* Buffer;
    for(size_t i=0;i<my_group_size;i++){
       int my_density_index = 0;
@@ -158,6 +169,7 @@ void psi::MinimalInterface::SetP(std::vector<SharedMatrix>& Ps){
    }
    return_flag = (int)PFock_commitDenMats(PFock_);
    return_flag = (int)PFock_computeFock(GTBasis_,PFock_);
+
    //PFock_getStatistics(PFock_);
    delete [] Buffer;
    if(return_flag != 0)
@@ -203,40 +215,61 @@ void psi::MinimalInterface::GetJ(std::vector<SharedMatrix>& Js){
    ///Otherwise, you need to pass chunk of Js to GenGetCall
    ///Then Broadcast all that information to Js
    else {
+       Timer overall_get_j;
        std::vector<int> my_density_chunk = subgroup_to_density_[which_processor_group];
+       std::vector<int> my_process_list  = subgroup_to_process_[which_processor_group];
        std::vector<SharedMatrix> J_subset;
+       printf("\n P%d trying to get J", GlobalComm_->Me());
        size_t my_group_size =  my_density_chunk.size();
        int count = 0;
        for(auto my_density : my_density_chunk)
            J_subset.push_back(Js[my_density]);
+       Timer gen_get_call;
        GenGetCall(J_subset,(int)PFOCK_MAT_TYPE_J);
+       printf("\n P%d call of GenGetCall takes %8.6f s", GlobalComm_->Me(), gen_get_call.get());
+       Timer send_j_to_master;
        for(size_t i =0; i < my_group_size; i++)
        {
            int my_density_index = my_density_chunk[i];
            J_subset[i]->scale(0.5);
+           ///If on process 0, just direcly modify Js
            if(GlobalComm_->Me() == 0)
            {
                Js[my_density_index] = J_subset[i];
            }
-           else {
+           ///Otherwise, J_subset is contained on list of processors in proc_list
+           ///Really only need to send from one of these processors
+           ///Take the first one for the hell of it
+           else if (GlobalComm_->Me() == my_process_list[0]){
                MPI_Send(&J_subset[i]->pointer()[0][0], NBasis_ * NBasis_, MPI_DOUBLE, 0, my_density_index, MPI_COMM_WORLD);
+               printf("\n P%d sending J[%d]", GlobalComm_->Me(), my_density_index);
            }
        }
+       printf("\n P%d sending Js to master takes %8.6f s", GlobalComm_->Me(),send_j_to_master.get());
+
        if(GlobalComm_->Me() == 0)
        {
+       Timer get_J;
            for(int group = 2; group < subgroup_ + 1; group++){
-               std::vector<int> my_density_chunk = subgroup_to_density_[group];
-               std::vector<int> my_process_list  = subgroup_to_process_[group];
+               std::vector<int> pzero_density_chunk = subgroup_to_density_[group];
+               std::vector<int> pzero_process_list  = subgroup_to_process_[group];
                for(int i = 0; i < my_density_chunk.size(); i++) {
-                   int my_true_index = my_density_chunk[i];
-                   MPI_Recv(&Js[my_true_index]->pointer()[0][0], NBasis_ * NBasis_, MPI_DOUBLE, my_process_list[0], my_true_index, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+                   int my_true_index = pzero_density_chunk[i];
+                   MPI_Recv(&Js[my_true_index]->pointer()[0][0], NBasis_ * NBasis_, MPI_DOUBLE, pzero_process_list[0], my_true_index, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
                }
+               printf("\n group: %d process_list[0]: %d", group, pzero_process_list[0]);
            }
+        outfile->Printf("\n Takes %8.6f to recv all J", get_J.get());
        }
+       Timer broadcast_j;
+       printf("\n P%d about to hit a Bcast", GlobalComm_->Me());
+       MPI_Barrier(MPI_COMM_WORLD);
        for(int i = 0; i < Js.size(); i++)
        {
            MPI_Bcast(&Js[i]->pointer()[0][0], NBasis_ * NBasis_, MPI_DOUBLE, 0, MPI_COMM_WORLD);
        }
+       printf("\n P%d takes %8.6f s to broadcast J", GlobalComm_->Me(), broadcast_j.get());
+       printf("\n P%d overall J takes %8.6f s", GlobalComm_->Me(), overall_get_j.get());
    }
 }
 void psi::MinimalInterface::GetK(std::vector<SharedMatrix>& Ks){

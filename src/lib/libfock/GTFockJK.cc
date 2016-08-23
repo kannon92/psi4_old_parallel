@@ -73,7 +73,6 @@ void GTFockJK::compute_JK() {
    Timer GetJK;
    Impl.GetJ(J_ao_);
    Impl.GetK(K_ao_);
-   //Impl_->DeleteComm();
-   outfile->Printf("\n Get J and K %8.8f s.", GetJK.get());
+   printf("\n Get J and K %8.8f s.", GetJK.get());
 }
 }
