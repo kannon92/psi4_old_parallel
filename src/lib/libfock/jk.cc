@@ -111,7 +111,23 @@ boost::shared_ptr<JK> JK::build_JK(boost::shared_ptr<BasisSet> primary, Options&
             jk->set_df_ints_num_threads(options.get_int("DF_INTS_NUM_THREADS"));
 
         return boost::shared_ptr<JK>(jk);
+        } else if (jk_type == "ParallelDF") {
+        boost::shared_ptr<BasisSet> auxiliary = BasisSet::pyconstruct_auxiliary(primary->molecule(),
+            "DF_BASIS_SCF", options.get_str("DF_BASIS_SCF"), "JKFIT",
+            options.get_str("BASIS"), primary->has_puream());
 
+        ParallelDFJK* jk = new ParallelDFJK(primary,auxiliary);
+
+        if (options["INTS_TOLERANCE"].has_changed())
+            jk->set_cutoff(options.get_double("INTS_TOLERANCE"));
+        if (options["PRINT"].has_changed())
+            jk->set_print(options.get_int("PRINT"));
+        if (options["DEBUG"].has_changed())
+            jk->set_debug(options.get_int("DEBUG"));
+        if (options["BENCH"].has_changed())
+            jk->set_bench(options.get_int("BENCH"));
+
+        return boost::shared_ptr<JK>(jk);
     } else if (jk_type == "FAST_DF") {
 
         boost::shared_ptr<BasisSet> auxiliary = BasisSet::pyconstruct_auxiliary(primary->molecule(),

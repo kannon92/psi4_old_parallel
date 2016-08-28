@@ -1170,7 +1170,7 @@ int read_options(const std::string &name, Options & options, bool suppress_print
     /*- What algorithm to use for the SCF computation. See Table :ref:`SCF
     Convergence & Algorithm <table:conv_scf>` for default algorithm for
     different calculation types. -*/
-    options.add_str("SCF_TYPE", "PK", "DIRECT DF PK OUT_OF_CORE FAST_DF CD INDEPENDENT");
+    options.add_str("SCF_TYPE", "PK", "DIRECT DF ParallelDF PK OUT_OF_CORE FAST_DF CD INDEPENDENT");
     /*- Maximum numbers of batches to read PK supermatrix. !expert -*/
     options.add_int("PK_MAX_BUCKETS", 500);
     /*- Select the PK algorithm to use. For debug purposes, selection will be automated later. !expert -*/

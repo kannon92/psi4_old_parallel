@@ -907,6 +907,7 @@ public:
     */
     virtual void print_header() const;
 };
+
 /**
  * Class CDJK
  *
@@ -956,6 +957,44 @@ public:
 
 };
 
+/**
+ * Class ParallelDFJK
+ *
+ * JK implementation using
+ * parallel density fitting technology
+ */
+class ParallelDFJK : public JK {
+    public:
+        ParallelDFJK(boost::shared_ptr<BasisSet> primary, boost::shared_ptr<BasisSet> auxiliary);
+        void common_init();
+        void set_condition(double condition) { condition_ = condition; }
+        void set_df_ints_num_threads(int val) { df_ints_num_threads_ = val; }
+        virtual ~ParallelDFJK();
+    protected:
+        boost::shared_ptr<BasisSet> auxiliary_;
+        int df_ints_num_threads_;
+        double condition_;
+        boost::shared_ptr<ERISieve> sieve_;
+        ///J^{(-1/2)} fitting metric
+        int J_12_GA_  = 0;
+        ///(Q|UV) tensor created in initialization of JK
+        int Q_UV_GA_  = 0;
+        ///A vector of J and K global array matrices
+
+        void preiterations();
+        virtual void postiterations();
+        virtual void print_header() const;
+        void compute_qmn();
+        void J_one_half();
+        /// Do a direct J(and/or) K build
+        void compute_JK();
+        void compute_J();
+        void compute_K();
+        void create_temp_ga();
+        //void block_K(double** Qmnp, int naux);
+        virtual bool C1() const { return true; }
+
+};
 /**
  * Class FastDFJK
  *
