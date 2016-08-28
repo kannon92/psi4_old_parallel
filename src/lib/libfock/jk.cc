@@ -111,7 +111,7 @@ boost::shared_ptr<JK> JK::build_JK(boost::shared_ptr<BasisSet> primary, Options&
             jk->set_df_ints_num_threads(options.get_int("DF_INTS_NUM_THREADS"));
 
         return boost::shared_ptr<JK>(jk);
-        } else if (jk_type == "ParallelDF") {
+        } else if (jk_type == "PARALLELDF") {
         boost::shared_ptr<BasisSet> auxiliary = BasisSet::pyconstruct_auxiliary(primary->molecule(),
             "DF_BASIS_SCF", options.get_str("DF_BASIS_SCF"), "JKFIT",
             options.get_str("BASIS"), primary->has_puream());

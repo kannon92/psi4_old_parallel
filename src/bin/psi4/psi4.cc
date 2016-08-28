@@ -67,6 +67,17 @@
 #ifdef _OPENMP
 #include <omp.h>
 #endif
+#ifdef HAVE_JK_FACTORY
+void* replace_malloc(size_t bytes, int align, char *name)
+{   
+    return malloc(bytes);
+}
+void replace_free(void *ptr)
+{   
+    free(ptr);
+}
+#endif
+
 namespace psi {
 int psi_start(int argc, char *argv[]);
 int psi_stop(FILE *infile, std::string, char *psi_file_prefix);
@@ -96,6 +107,7 @@ int main(int argc, char **argv)
 #endif
 #ifdef HAVE_JK_FACTORY
     GA_Initialize();
+    GA_Register_stack_memory(replace_malloc, replace_free);
 #endif
 
     // Setup the environment
