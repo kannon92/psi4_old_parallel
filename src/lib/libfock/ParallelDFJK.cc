@@ -142,8 +142,8 @@ void ParallelDFJK::compute_qmn()
 {
 // > Sizing < //
 
-    int nso = primary_->nbf();
-    int naux = auxiliary_->nbf();
+    size_t nso = primary_->nbf();
+    size_t naux = auxiliary_->nbf();
 
     // > Threading < //
 
@@ -162,9 +162,6 @@ void ParallelDFJK::compute_qmn()
 
     int max_rows = (memory_ / per_row);
     //max_rows = 3L * auxiliary_->max_function_per_shell(); // Debug
-    if (max_rows < auxiliary_->max_function_per_shell()) {
-        throw PSIEXCEPTION("Out of memory in DFERI.");
-    }
     max_rows = (max_rows > auxiliary_->nbf() ? auxiliary_->nbf() : max_rows);
     int shell_per_process = 0;
     int shell_start = -1;
@@ -178,7 +175,12 @@ void ParallelDFJK::compute_qmn()
        shell_per_process = auxiliary_->nshell() / num_proc;
     }
     else {
-        throw PSIEXCEPTION("Have not implemented memory bound df integrals");
+        //throw PSIEXCEPTION("Have not implemented memory bound df integrals");
+        outfile->Printf("\n DF basis set is larger than what you specified");
+        double memory_requirement= naux * nso * nso * 8.8 / (1024 * 1024 * 1024);
+        outfile->Printf("\n (Q|MN) takes up %8.5f GB", memory_requirement);
+        outfile->Printf("\n You need %d nodes to fit (Q|MN) on parallel machine", memory_requirement / num_proc);
+
     }
     ///Have first proc be from 0 to shell_per_process
     ///Last proc is shell_per_process * my_rank to naux
