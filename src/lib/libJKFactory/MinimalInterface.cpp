@@ -66,38 +66,69 @@ void psi::MinimalInterface::Vectorize(
    std::vector<SharedMatrix>temp(1,Mat);
    (this->*(fxn))(temp);
 }
-
-psi::MinimalInterface::~MinimalInterface(){
+void psi::MinimalInterface::destroy_gtfock()
+{
    Comm_->FreeComm();
    PFock_destroy(PFock_);
+   //subgroup_to_density_.clear();
+   //subgroup_to_process_.clear();
+}
+psi::MinimalInterface::~MinimalInterface(){
    CInt_destroyBasisSet(GTBasis_);
 }
-
-psi::MinimalInterface::MinimalInterface(const int NMats,
-      const bool AreSymm):NPRow_(1),NPCol_(1),
+psi::MinimalInterface::MinimalInterface():NPRow_(1),NPCol_(1),
                           StartRow_(0),StartCol_(0),
-                          EndRow_(0),EndCol_(0),Stride_(0),NBasis_(0){
+                          EndRow_(0),EndCol_(0),Stride_(0),NBasis_(0)
+{
+   Timer setup_fnc;
+   SetUp();
+   outfile->Printf("\n SetUp takes %8.4f s. ", setup_fnc.get());
+   Timer create_primary;
+   psi::Options& options = psi::Process::environment.options;
+   SharedBasis primary = psi::BasisSet::pyconstruct_orbital(
+    		                  psi::Process::environment.legacy_molecule(),
+                             "BASIS", options.get_str("BASIS"));
+   outfile->Printf("\n Create_primary takes %8.4f s. ", create_primary.get());
+   NBasis_=primary->nbf();
+   Timer makebasis;
+   MakeBasis(&GTBasis_,primary);
+   outfile->Printf("\n MakeBasis takes %8.4f s. ", makebasis.get());
+
+}
+
+void psi::MinimalInterface::create_pfock(const int NMats,
+      const bool AreSymm)
+{
+   ///Initialize these variables (create_pfock is trying to mock constructor)
+   //NPRow_ = 1;
+   //NPCol_ = 1;
+   //StartRow_ = 0;
+   //StartCol_ = 0;
+   //EndRow_   = 0;
+   //EndCol_   = 0;
+   //Stride_   = 0;
+   //NBasis_   = 0;
     //Trying to parallelize over the density matrices
     //Try to split up communicators
     ///How many density matrices to have GTFock be responsible for
     ///If user does not specify this, assume GTFock handles all density matrices
-    psi::Options& options = psi::Process::environment.options;
-    GlobalComm_ = psi::WorldComm->GetComm();
-    int total_number_processors = GlobalComm_->NProc();
-    int global_me = GlobalComm_->Me();
-    outfile->Printf("\n Using GTFock for ParallelJK build with %d MPI processes and %d omp threads", total_number_processors, omp_get_max_threads());
-    int density_matrices_per_process = options.get_int("DENSITY_MATRICES_PER_PROCESS");
-    int subgroup_number              = options.get_int("NUMBER_OF_SUBGROUPS");
-    ///Create a subgroup that will process density_matrices_per_process
-    create_communicators(NMats, density_matrices_per_process, subgroup_number);
-    SetUp();
-    SplitProcs(NPRow_,NPCol_);
-    SharedBasis primary = psi::BasisSet::pyconstruct_orbital(
-    		                  psi::Process::environment.legacy_molecule(),
-                             "BASIS", options.get_str("BASIS"));
-   NBasis_=primary->nbf();
+   psi::Options& options = psi::Process::environment.options;
+   GlobalComm_ = psi::WorldComm->GetComm();
+   int total_number_processors = GlobalComm_->NProc();
+   int global_me = GlobalComm_->Me();
+   outfile->Printf("\n Using GTFock for ParallelJK build with %d MPI processes and %d omp threads", total_number_processors, omp_get_max_threads());
+   int density_matrices_per_process = options.get_int("DENSITY_MATRICES_PER_PROCESS");
+   int subgroup_number              = options.get_int("NUMBER_OF_SUBGROUPS");
+   ///Create a subgroup that will process density_matrices_per_process
+   Timer create_comm;
+   create_communicators(NMats, density_matrices_per_process, subgroup_number);
+   outfile->Printf("\n Create_communicators takes %8.4f s. ", create_comm.get());
+   Timer splitprocs;
+   SplitProcs(NPRow_,NPCol_);
+   outfile->Printf("\n SplitProcs takes %8.4f s. ", splitprocs.get());
+   Timer blockdims;
    BlockDims(NBasis_);
-   MakeBasis(&GTBasis_,primary);
+   outfile->Printf("\n BlockDims takes %8.4f s. ", blockdims.get());
    //I don't know how GTFock works
    double IntThresh=
          psi::Process::environment.options["INTS_TOLERANCE"].to_double();
@@ -111,7 +142,10 @@ psi::MinimalInterface::MinimalInterface(const int NMats,
    size_t my_group_size = subgroup_to_density_[which_processor_group + 1].size();
    std::vector<int> processor_list;
    int processor_size = 0;
+   Timer create_proc_list;
    create_processor_list(processor_list, processor_size, NMats);
+   outfile->Printf("\n create_processor_list %8.4f s. ", create_proc_list.get());
+   printf("\n P%d NProw_: %d NPCol_: %d NBlkFock: %d IntThresh: %8.8f my_group_size: %d Proc_size: %d NBasis: %d", global_me, NPRow_, NPCol_, NBlkFock, IntThresh, my_group_size, processor_size, NBasis_);
    int return_flag = (int) PFock_create(GTBasis_,NPRow_,NPCol_,NBlkFock,IntThresh,
          static_cast<int>(my_group_size) ,AreSymm,&PFock_, &processor_list[0], processor_size);
 
@@ -119,12 +153,16 @@ psi::MinimalInterface::MinimalInterface(const int NMats,
    {
        for(int i = 0; i < processor_size; i++)
            printf("\n P%d processor_list[%d] = %d", global_me, i, processor_list[i]);
+       printf("\n P%d NProw_: %d NPCol_: %d NBlkFock: %d IntThresh: %8.8f my_group_size: %d Proc_size: %d", global_me, NPRow_, NPCol_, NBlkFock, IntThresh, my_group_size, processor_size);
+   
        outfile->Printf("\n Something happened during PFock_create"); 
        outfile->Printf("\n GTFock error is %d", return_flag);
        outfile->Printf("\n NMats: %d AreSymm: %d", NMats, AreSymm);
        throw PSIEXCEPTION("GTFock threw a failure in PFock_create. Check error and log.");
    }
    printf("\n PFock_create is complete.  Took %8.6f s. ", pfock_create.get());
+   NPRow_ = 1;
+   NPCol_ = 1;
 }
 
 void psi::MinimalInterface::SetP(std::vector<SharedMatrix>& Ps){
@@ -470,10 +508,11 @@ void psi::MinimalInterface::create_processor_list(std::vector<int>& processor_li
    if(subgroup_ == 1)
    {
         processor_list.resize(total_size);
-        for(int i = 0; i < total_size; i++)
-        {
-            processor_list[i] = i;
-        }
+        //for(int i = 0; i < total_size; i++)
+        //{
+        //    processor_list[i] = i;
+        //}
+        std::iota(processor_list.begin(), processor_list.end(), 0);
         processor_size = total_size;
    }
    else {

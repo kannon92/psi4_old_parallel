@@ -41,38 +41,25 @@ namespace psi {
 //    NMats_ = NMats;
 //}
 GTFockJK::GTFockJK(boost::shared_ptr<BasisSet> Primary) :
-    JK(Primary)
+    JK(Primary), Impl_(new MinimalInterface())
 {
 
 }
 
 void GTFockJK::compute_JK() {
 
-   ///KPH: Trying to get GTFock to work with other JK builds
-   ///If user did not say how many jk builds are necessary, find this information from jk object.  
-   //if(NMats_ == 0)
-   //{
-   //     outfile->Printf("\n NMats: %d", NMats_);
-   //     outfile->Printf("\n Cleft: %d Cright: %d", C_left_.size(), C_right_.size());
-   //     NMats_ = C_left_.size(); 
-   //     Impl_.reset(new MinimalInterface(NMats_, lr_symmetric_, primary_));
-   //     ///Not really sure why this is here
-   //     //Need to make sure that NMats is always equal to C_left/C_right
-   //     //
-   //     NMats_ = 0;
-   //}
-   //else 
-   //{
-   //     NMats_ = C_left_.size();
-   //}
+   Timer OverallJK;
    NMats_ = C_left_.size();
-   MinimalInterface Impl(NMats_, lr_symmetric_);
+   Impl_->create_pfock(NMats_, lr_symmetric_);
+   outfile->Printf("\n Intialized Impl takes %8.5f s.", OverallJK.get());
    Timer SetP_time;
-   Impl.SetP(D_ao_);
-   printf("\n SetP takes %8.8f s. with %d densities", SetP_time.get(), D_ao_.size());
+   Impl_->SetP(D_ao_);
+   outfile->Printf("\n SetP takes %8.8f s with %d densities", SetP_time.get(), D_ao_.size());
    Timer GetJK;
-   Impl.GetJ(J_ao_);
-   Impl.GetK(K_ao_);
-   printf("\n Get J and K %8.8f s.", GetJK.get());
+   Impl_->GetJ(J_ao_);
+   Impl_->GetK(K_ao_);
+   outfile->Printf("\n Get J and K %8.8f s.", GetJK.get());
+   Impl_->destroy_gtfock();
+   outfile->Printf("\n OverallJK takes %8.6f s.", OverallJK.get());
 }
 }

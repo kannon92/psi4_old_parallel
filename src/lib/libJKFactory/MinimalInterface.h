@@ -75,7 +75,7 @@ class MinimalInterface{
       void create_processor_list(std::vector<int>& processor_list, int &processor_size, int total_number_density);
 
    public:
-      MinimalInterface(const int NMats=1,const bool AreSymm=true);
+      MinimalInterface();
       ~MinimalInterface();
       void GetJ(std::vector<boost::shared_ptr<Matrix> >& Js);
       void GetJ(boost::shared_ptr<Matrix> J){
@@ -90,6 +90,8 @@ class MinimalInterface{
          Vectorize(P,&MinimalInterface::SetP);
       }
       bool UseJKFactory()const{return true;}
+      void create_pfock(const int NMats, const bool symmetry);
+      void destroy_gtfock();
       //void DeleteComm();
 };
 #else
