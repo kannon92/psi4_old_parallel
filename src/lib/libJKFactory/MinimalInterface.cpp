@@ -70,8 +70,8 @@ void psi::MinimalInterface::destroy_gtfock()
 {
    Comm_->FreeComm();
    PFock_destroy(PFock_);
-   //subgroup_to_density_.clear();
-   //subgroup_to_process_.clear();
+   subgroup_to_density_.clear();
+   subgroup_to_process_.clear();
 }
 psi::MinimalInterface::~MinimalInterface(){
    CInt_destroyBasisSet(GTBasis_);
@@ -100,8 +100,8 @@ void psi::MinimalInterface::create_pfock(const int NMats,
       const bool AreSymm)
 {
    ///Initialize these variables (create_pfock is trying to mock constructor)
-   //NPRow_ = 1;
-   //NPCol_ = 1;
+   NPRow_ = 1;
+   NPCol_ = 1;
    //StartRow_ = 0;
    //StartCol_ = 0;
    //EndRow_   = 0;
@@ -161,8 +161,8 @@ void psi::MinimalInterface::create_pfock(const int NMats,
        throw PSIEXCEPTION("GTFock threw a failure in PFock_create. Check error and log.");
    }
    printf("\n PFock_create is complete.  Took %8.6f s. ", pfock_create.get());
-   NPRow_ = 1;
-   NPCol_ = 1;
+   //NPRow_ = 1;
+   //NPCol_ = 1;
 }
 
 void psi::MinimalInterface::SetP(std::vector<SharedMatrix>& Ps){
@@ -395,6 +395,7 @@ void psi::MinimalInterface::BlockDims(const int NBasis){
       TempComm->FreeComm();
    }
    Stride_=EndCol_-StartCol_+1;
+   printf("\n P%d Stride_: %d StartCol_: %d EndCol_: %d NPRow_: %d", GlobalComm_->Me(), Stride_, StartCol_, EndCol_, NPRow_);
 }
 
 void psi::MinimalInterface::SplitProcs(int& NPRow, int& NPCol){
@@ -428,6 +429,7 @@ void psi::MinimalInterface::create_communicators(int NMats, int density_matrices
     {
         ///Create A new communciator that copies the COMM_WORLD
         /// Basically done so same code can be used for sub comm
+        subgroup_ = 1;
         std::vector<int> density_list(NMats, 0);
         std::iota(density_list.begin(), density_list.end(), 0);
         subgroup_to_density_[subgroup_] = density_list;
