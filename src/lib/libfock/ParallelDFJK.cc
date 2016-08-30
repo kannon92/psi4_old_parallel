@@ -160,9 +160,9 @@ void ParallelDFJK::compute_qmn()
 
     // > Maximum number of rows < //
 
-    int max_rows = (memory_ / per_row);
+    int test_memory = (memory_ / per_row);
     //max_rows = 3L * auxiliary_->max_function_per_shell(); // Debug
-    max_rows = (max_rows > auxiliary_->nbf() ? auxiliary_->nbf() : max_rows);
+    test_memory = (test_memory > auxiliary_->nbf() ? auxiliary_->nbf() : test_memory);
     int shell_per_process = 0;
     int shell_start = -1;
     int shell_end = -1;
@@ -170,16 +170,19 @@ void ParallelDFJK::compute_qmn()
     int my_rank = GA_Nodeid();
     int num_proc = GA_Nnodes();
 
-    if(auxiliary_->nbf() == max_rows)
+    if(auxiliary_->nbf() == test_memory)
     {
        shell_per_process = auxiliary_->nshell() / num_proc;
     }
     else {
         //throw PSIEXCEPTION("Have not implemented memory bound df integrals");
         outfile->Printf("\n DF basis set is larger than what you specified");
-        double memory_requirement= naux * nso * nso * 8.8 / (1024 * 1024 * 1024);
-        outfile->Printf("\n (Q|MN) takes up %8.5f GB", memory_requirement);
-        outfile->Printf("\n You need %d nodes to fit (Q|MN) on parallel machine", memory_requirement / num_proc);
+        double memory_requirement= naux * nso * nso * 8.0 / (1024 * 1024 * 1024);
+        double memory_in_gb      = memory_ / (1024.0 * 1024.0 * 1024.0);
+        outfile->Printf("\n (Q|MN) takes up %8.5f GB out of %8.5f GB", memory_requirement, memory_in_gb);
+        outfile->Printf("\n You need %8.2f nodes to fit (Q|MN) on parallel machine", memory_requirement / memory_in_gb);
+        ///Fuck it.  Just assume that user provided enough memory (or nodes) for now
+        shell_per_process = auxiliary_->nshell() / num_proc;
 
     }
     ///Have first proc be from 0 to shell_per_process
@@ -197,6 +200,7 @@ void ParallelDFJK::compute_qmn()
 
     int function_start = auxiliary_->shell(shell_start).function_index();
     int function_end = (shell_end == auxiliary_->nshell() ? auxiliary_->nbf() : auxiliary_->shell(shell_end).function_index());
+    int max_rows = (function_end - function_start) + 1;
     int dims[2];
     int chunk[2];
     dims[0] = naux;
