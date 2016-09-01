@@ -67,7 +67,7 @@
 #ifdef _OPENMP
 #include <omp.h>
 #endif
-#ifdef HAVE_JK_FACTORY
+//#ifdef HAVE_JK_FACTORY
 void* replace_malloc(size_t bytes, int align, char *name)
 {   
     return malloc(bytes);
@@ -76,7 +76,7 @@ void replace_free(void *ptr)
 {   
     free(ptr);
 }
-#endif
+//#endif
 
 namespace psi {
 int psi_start(int argc, char *argv[]);
@@ -105,10 +105,10 @@ int main(int argc, char **argv)
 #ifdef HAVE_AMBIT
     ambit::initialize(argc, argv);
 #endif
-#ifdef HAVE_JK_FACTORY
+//#ifdef HAVE_JK_FACTORY
     GA_Initialize();
     GA_Register_stack_memory(replace_malloc, replace_free);
-#endif
+//#endif
 
     // Setup the environment
     Process::environment.initialize();   // grabs the environment from the global environ variable

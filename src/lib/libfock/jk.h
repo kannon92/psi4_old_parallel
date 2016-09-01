@@ -969,11 +969,13 @@ class ParallelDFJK : public JK {
         void common_init();
         void set_condition(double condition) { condition_ = condition; }
         void set_df_ints_num_threads(int val) { df_ints_num_threads_ = val; }
+        void set_batch_size(int block_size) { block_size_ = block_size; }
         virtual ~ParallelDFJK();
     protected:
         boost::shared_ptr<BasisSet> auxiliary_;
         int df_ints_num_threads_;
         double condition_;
+        int block_size_ = 1000;
         boost::shared_ptr<ERISieve> sieve_;
         ///J^{(-1/2)} fitting metric
         int J_12_GA_  = 0;
@@ -991,6 +993,9 @@ class ParallelDFJK : public JK {
         void compute_J();
         void compute_K();
         void create_temp_ga();
+        /// Wrapper functions to perform a batched get/put over block_size (GA uses ints internally)
+        /// ga_get tells whether to call NGA_Get or NGA_Put (if true, call NGA_Get)
+        void get_or_put_ga_batches(int MY_GA, std::vector<double>& ga_buf, bool ga_get);
         //void block_K(double** Qmnp, int naux);
         virtual bool C1() const { return true; }
 

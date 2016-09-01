@@ -1379,6 +1379,9 @@ int read_options(const std::string &name, Options & options, bool suppress_print
     /*- Bump function max radius -*/
     options.add_double("DF_BUMP_R1", 0.0);
 
+    /*- SUBSECTION PARALLELDF Algorithm -*/
+    options.add_int("PARALLELDF_BATCH_SIZE", 1000);
+
     /*- SUBSECTION SAD Guess Algorithm -*/
 
     /*- The amount of SAD information to print to the output !expert -*/

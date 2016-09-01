@@ -558,7 +558,7 @@ double HF::finalize_E()
             outfile->Printf( "  Energy did not converge, but proceeding anyway.\n\n");
         }
 
-        bool df = (options_.get_str("SCF_TYPE") == "DF");
+        bool df = (options_.get_str("SCF_TYPE") == "DF") or (options_.get_str("SCF_TYPE") == "PARALLELDF");
 
         outfile->Printf( "  @%s%s Final Energy: %20.14f", df ? "DF-" : "", reference.c_str(), E_);
         if (perturb_h_) {
@@ -1951,7 +1951,7 @@ void HF::iterations()
 
         converged_ = test_convergency();
 
-        df = (options_.get_str("SCF_TYPE") == "DF");
+        df = options_.get_str("SCF_TYPE") == "DF" or options_.get_str("SCF_TYPE") == "PARALLELDF";
 
 
         outfile->Printf( "   @%s%s iter %3d: %20.14f   %12.5e   %-11.5e %s\n", df ? "DF-" : "",

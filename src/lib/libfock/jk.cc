@@ -126,6 +126,8 @@ boost::shared_ptr<JK> JK::build_JK(boost::shared_ptr<BasisSet> primary, Options&
             jk->set_debug(options.get_int("DEBUG"));
         if (options["BENCH"].has_changed())
             jk->set_bench(options.get_int("BENCH"));
+        if (options["PARALLELDF_BATCH_SIZE"].has_changed())
+            jk->set_batch_size(options.get_int("PARALLELDF_BATCH_SIZE"));
 
         return boost::shared_ptr<JK>(jk);
     } else if (jk_type == "FAST_DF") {
