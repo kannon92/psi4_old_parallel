@@ -275,6 +275,9 @@ if(BUILD_JK_FACTORY)
    set(HAVE_GLOBAL_ARRAYS FALSE)
    add_definitions(-DHAVE_JK_FACTORY)
    set(JKROOT ${CMAKE_CURRENT_SOURCE_DIR}/src/lib/libJKFactory)
+   #set(JK_GA_INC ${CMAKE_CXX_FLAGS})
+   #set(JK_GA_LIBS ${CMAKE_EXE_LINKER_FLAGS})
+   message(STATUS "JK_GA: ${JK_GA_INC} ${JK_GA_LIBS}")
 endif()
 
 # Add the documentation subdirectory

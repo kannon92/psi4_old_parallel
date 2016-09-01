@@ -16,10 +16,11 @@
 #Build Global Arrays (if needed)
 #include(cmake/BuildGA.txt)
 set(JK_GA_LIBS 
-"/home/kannon/src/GTFock/GAlib5_4_infiniband/lib64/libga.a"
-"/home/kannon/src/GTFock/GAlib5_4_infiniband/lib64/libarmci.a"
+"${JK_GA_LIBS}/libga.a"
+"${JK_GA_LIBS}/libarmci.a"
 )
-set(JK_GA_INC "/home/kannon/src/GTFock/GAlib5_4_infiniband/include")
+set(JK_GA_INC "${JK_GA_INC}/include")
+message(STATUS "JK_GA_INFO: ${JK_GA_LIBS} ${JK_GA_INC}")
 
 #I'm going to assume the user doesn't have GTFock
 #so let's build that now

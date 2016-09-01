@@ -1,0 +1,21 @@
+memory 1 gb
+
+molecule H20 {
+0 1
+H
+O 1 1.08
+H 2 1.08 1 107.5
+units bohr
+}
+
+set globals {
+    basis        cc-pvdz
+    df_basis_scf cc-pvdz-jkfit
+    df_basis_mp2 cc-pvdz-ri
+    scf_type     PARALLELDF
+    reference    RHF
+    PARALLELDF_BATCH_SIZE -1
+    PARALLELDF_PROFILE     true
+}
+refenergy, refwfn = energy('scf', return_wfn=True)
+compare_values(refenergy, -75.16902130716564, 6, "ParallelDF Success")

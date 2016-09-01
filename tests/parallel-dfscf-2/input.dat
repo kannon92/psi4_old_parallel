@@ -1,0 +1,60 @@
+import paralleldf
+memory 1 gb
+
+molecule mol{
+0 3
+C -4.42137913   1.33590627   0.0000 
+   
+C -4.60331786  -1.28937739   0.0000
+   
+C -2.34049337  -2.61273589   0.0000
+   
+C 0.00000000   -1.29099011   0.0000
+   
+C 0.00000000    1.41656832   0.0000
+   
+C -2.35825095   2.81338401   0.0000
+   
+C 2.35825095    2.81338401   0.0000
+   
+C 4.42137913    1.33590627   0.0000
+   
+C 4.60331786   -1.28937739   0.0000
+   
+C 2.34049337   -2.61273589   0.0000
+   
+H -6.41406780  -2.27923963   0.0000
+   
+H -2.33118686  -4.68145183   0.0000
+   
+H -2.30029761   4.87777871   0.0000
+   
+H 2.30029761    4.87777871   0.0000
+   
+H 6.41406780   -2.27923963   0.0000
+   
+H 2.33118686   -4.68145183   0.0000
+   
+   
+   
+
+units bohr
+}
+
+set globals{
+   reference               ROHF
+   scf_type                df
+   d_convergence           3
+   e_convergence           4
+   maxiter                 1000
+  # docc                    [15,2,12,3]
+  # socc                    [1,0,1,0]
+   basis                   cc-pvdz
+   df_basis_mp2            cc-pvdz-ri
+   df_basis_scf            cc-pvdz-jkfit
+}
+refenergy, refwfn = energy('scf', return_wfn=True)
+set scf_type PARALLELDF
+parallelenergy = energy('scf')
+compare_values(refenergy, parallelenergy,6,"ParallelDFJK passed")
+

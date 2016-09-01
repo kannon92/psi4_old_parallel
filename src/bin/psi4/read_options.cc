@@ -1380,7 +1380,14 @@ int read_options(const std::string &name, Options & options, bool suppress_print
     options.add_double("DF_BUMP_R1", 0.0);
 
     /*- SUBSECTION PARALLELDF Algorithm -*/
+
+    /*- Batching size for GA_GET and GA_PUT (This should be chosen automatically
+       GA uses ints in get and put, so there were problems with erronenous indices -*/
     options.add_int("PARALLELDF_BATCH_SIZE", 1000);
+    /*- Profile each J and K build -*/
+    options.add_bool("PARALLELDF_PROFILE", true);
+    
+    
 
     /*- SUBSECTION SAD Guess Algorithm -*/
 

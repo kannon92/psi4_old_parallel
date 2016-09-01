@@ -970,12 +970,14 @@ class ParallelDFJK : public JK {
         void set_condition(double condition) { condition_ = condition; }
         void set_df_ints_num_threads(int val) { df_ints_num_threads_ = val; }
         void set_batch_size(int block_size) { block_size_ = block_size; }
+        void set_profile(bool profile) { profile_ = profile; }
         virtual ~ParallelDFJK();
     protected:
         boost::shared_ptr<BasisSet> auxiliary_;
         int df_ints_num_threads_;
         double condition_;
-        int block_size_ = 1000;
+        bool profile_ = false;
+        int block_size_ = -1;
         boost::shared_ptr<ERISieve> sieve_;
         ///J^{(-1/2)} fitting metric
         int J_12_GA_  = 0;
