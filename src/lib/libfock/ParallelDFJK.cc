@@ -541,11 +541,11 @@ void ParallelDFJK::get_or_put_ga_batches(int MY_GA, std::vector<double>& ga_buf,
             int end   = (batch == naux_batch - 1) ? naux_end : naux_begin + (batch + 1) * block_size_ - 1;
             begin_offset[0] = begin;
             end_offset[0] = end;
-            printf("\n offset[%d][0] = (%d, %d) offset[%d][1] = (%d, %d) and ld: %d", batch, begin_offset[0], end_offset[0], batch, begin_offset[1], end_offset[1], stride);
+            printf("\n P%d offset[%d][0] = (%d, %d) offset[%d][1] = (%d, %d) and ld: %d", GA_Nodeid(), batch, begin_offset[0], end_offset[0], batch, begin_offset[1], end_offset[1], stride);
             if(ga_get)
-                NGA_Get(MY_GA, begin_offset, end_offset, &ga_buf[begin * stride], &stride);
+                NGA_Get(MY_GA, begin_offset, end_offset, &ga_buf[(batch * block_size_) * stride], &stride);
             else
-                NGA_Put(MY_GA, begin_offset, end_offset, &ga_buf[begin * stride], &stride);
+                NGA_Put(MY_GA, begin_offset, end_offset, &ga_buf[(batch * block_size_) * stride], &stride);
         }
     }
     double ga_buf_norm = 0.0;
