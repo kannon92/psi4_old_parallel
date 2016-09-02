@@ -167,17 +167,15 @@ void ParallelDFJK::compute_qmn()
     int my_rank = GA_Nodeid();
     int num_proc = GA_Nnodes();
 
-    if(true)
-    {
-       shell_per_process = auxiliary_->nshell() / num_proc;
-       double memory_requirement= naux * nso * nso * 8.0 / (1024 * 1024 * 1024);
-       double memory_in_gb      = memory_ / (1024.0 * 1024.0 * 1024.0);
-       outfile->Printf("\n (Q|MN) takes up %8.5f GB out of %8.5f GB", memory_requirement, memory_in_gb);
-       outfile->Printf("\n You need %8.2f nodes to fit (Q|MN) on parallel machine", memory_requirement / memory_in_gb);
-       ///Fuck it.  Just assume that user provided enough memory (or nodes) for now
-       shell_per_process = auxiliary_->nshell() / num_proc;
+     shell_per_process = auxiliary_->nshell() / num_proc;
+     double memory_requirement= naux * nso * nso * 8.0 / (1024 * 1024 * 1024);
+     double memory_in_gb      = memory_ / (1024.0 * 1024.0 * 1024.0);
+     outfile->Printf("\n (Q|MN) takes up %8.5f GB out of %8.5f GB", memory_requirement, memory_in_gb);
+     outfile->Printf("\n You need %8.2f nodes to fit (Q|MN) on parallel machine", memory_requirement / memory_in_gb);
+     ///Fuck it.  Just assume that user provided enough memory (or nodes) for now
+     shell_per_process = auxiliary_->nshell() / num_proc;
 
-    }
+    
     ///Have first proc be from 0 to shell_per_process
     ///Last proc is shell_per_process * my_rank to naux
 
@@ -322,7 +320,9 @@ void ParallelDFJK::compute_qmn()
 
         //NGA_Distribution(A_UV_GA, GA_Nodeid(), Auv_begin, Auv_end);
         //int ld = nso * nso;
+        Timer put_ga_auv;
         get_or_put_ga_batches(A_UV_GA, Auv, false);
+        if(profile_) printf("\n P%d Placing Auv into Distributed memory takes %8.4f s.", GA_Nodeid(), put_ga_auv.get());
     }
     if(profile_) printf("\n  P%d Auv took %8.6f s.", GA_Nodeid(), compute_Auv.get());
 
@@ -332,6 +332,7 @@ void ParallelDFJK::compute_qmn()
 
     Timer GA_DGEMM;
     GA_Dgemm('N', 'N', naux, nso * nso, naux, 1.0, J_12_GA_, A_UV_GA, 0.0, Q_UV_GA_);
+    //DF_Dgemm(J_12_GA_, A_UV_GA, Q_UV_GA_);
     if(profile_) printf("\n  P%d DGEMM took %8.6f s.", GA_Nodeid(), GA_DGEMM.get());
 
     GA_Destroy(A_UV_GA);
@@ -357,16 +358,16 @@ void ParallelDFJK::compute_J()
     ///Since Q_UV_GA is distributed via NAUX index,
     ///need to get locality information (where data is located)
     ///Since Q never changes via density, no need to be in loop
+    Timer ga_comm;
     int begin_offset[2];
     int end_offset[2];
     NGA_Distribution(Q_UV_GA_,GA_Nodeid(), begin_offset, end_offset);
-    Timer ga_comm;
     size_t q_uv_size = (end_offset[0] - begin_offset[0] + 1) * nso * nso;
     q_uv_temp.resize(q_uv_size);
     J_V.resize(end_offset[0] - begin_offset[0] + 1);
     int stride = nso * nso;
     get_or_put_ga_batches(Q_UV_GA_, q_uv_temp, true);
-    //printf("\n P%d J_Get takes %8.4f s", GA_Nodeid(), ga_comm.get());
+    if(profile_) printf("\n P%d J_Get takes %8.4f s for %zu elements", GA_Nodeid(), ga_comm.get(), q_uv_size);
     ///Start a loop over the densities
     //double local_ga_norm;
     //for(int quv = 0; quv < q_uv_size; quv++) local_ga_norm += q_uv_temp[quv] * q_uv_temp[quv];
@@ -392,7 +393,9 @@ void ParallelDFJK::compute_J()
         C_DGEMV('T', local_naux, num_nm, 1.0, &q_uv_temp[0], num_nm, &J_V[0], 1, 0.0, J_temp->pointer(), 1);
         if(profile_) printf("\n P%d (B^{Q}_{uv} * J_V^{Q} takes %8.4f s", GA_Nodeid(), J_BJ.get());
         ///Since every processor has a copy of J_temp, sum all the parts and send to every process
+        Timer all_reduce;
         MPI_Allreduce(J_temp->pointer(), Jp[0], num_nm, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+        if(profile_) printf("\n P%d Allreduce for J takes %8.4f s.", GA_Nodeid(), all_reduce.get());
 
         if(profile_) printf("\n P%d Compute_J for %d density takes %8.6f s with ||J||: %8.8f", GA_Nodeid(), Compute_J_one.get(), N, J_temp->norm());
     }
@@ -431,7 +434,7 @@ void ParallelDFJK::compute_K()
     size_t local_naux = (end_offset[0] - begin_offset[0] + 1);
     q_uv_temp.resize(q_uv_size);
     get_or_put_ga_batches(Q_UV_GA_, q_uv_temp, true);
-    if(profile_) printf("\n P%d GET_K takes %8.6f", GA_Nodeid(), Get_K_GA.get());
+    if(profile_) printf("\n P%d GET_K takes %8.6f with %zu elements", GA_Nodeid(), Get_K_GA.get(), q_uv_size);
 
  
 
@@ -471,6 +474,7 @@ void ParallelDFJK::compute_K()
         }
         if(!lr_symmetric_ && (N == 0 || C_right_[N].get() != C_right_[N-1].get())) {
 
+            Timer B_C_righttrans;
             if(C_right_[N].get() == C_left_[N].get()) 
             {
                 //::memcpy((void*) Bm_Qi->pointer()[0], (void*) Bn_Qi->pointer()[0], sizeof(double) * local_naux * nocc * nbf);
@@ -485,7 +489,7 @@ void ParallelDFJK::compute_K()
                     C_DCOPY(nocc, &BQ_ui->pointer()[0][n * nbf * nocc + m * nocc], 1, &Bn_Qi->pointer()[0][m * local_naux * nocc + n * nocc], 1);
 
             }
-             
+            if(profile_) printf("\n P%d Half trans right side takes %8.4f s", GA_Nodeid(), B_C_righttrans.get()); 
         }
         SharedMatrix local_K(new Matrix("K", nbf, nbf));
         Timer Final_K;
@@ -545,5 +549,37 @@ void ParallelDFJK::get_or_put_ga_batches(int MY_GA, std::vector<double>& ga_buf,
     //for(auto value : ga_buf)
     //    ga_buf_norm += value * value;
     //printf("\n Norm in get_ga: %8.8f", sqrt(ga_buf_norm));
+}
+void ParallelDFJK::DF_Dgemm(int GA_left, int GA_right, int GA_final)
+{
+    if(GA_Nnodes() == 0)
+    {
+        size_t naux = auxiliary_->nbf();
+        size_t nso2 = primary_->nbf() * primary_->nbf();
+
+        int begin_j[2];
+        int end_j[2];
+        int begin_qmn[2];
+        int end_qmn[2];
+
+        NGA_Distribution(GA_left, 0, begin_j, end_j);
+        std::vector<double> j_buf(end_j[0] - begin_j[0] + 1, 0.0);
+        get_or_put_ga_batches(GA_left, j_buf, true);
+
+        NGA_Distribution(GA_right, 0, begin_qmn, end_qmn);
+        std::vector<double> qmn_buf(nso2 * naux, 0.0);
+        std::vector<double> final_buf(qmn_buf);
+        get_or_put_ga_batches(GA_right, qmn_buf, true);
+
+        C_DGEMM('N', 'N', naux, nso2, naux, 1.0, &j_buf[0], naux, &qmn_buf[0], nso2, 0.0, &final_buf[0], nso2);
+
+        get_or_put_ga_batches(GA_final, final_buf, false);
+
+    }
+    else {
+        int naux = auxiliary_->nbf();
+        int nso = primary_->nbf();
+        GA_Dgemm('N', 'N', naux, nso * nso, naux, 1.0, GA_left, GA_right, 0.0, GA_final);
+    }
 }
 }

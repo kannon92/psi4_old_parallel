@@ -994,10 +994,11 @@ class ParallelDFJK : public JK {
         void compute_JK();
         void compute_J();
         void compute_K();
-        void create_temp_ga();
         /// Wrapper functions to perform a batched get/put over block_size (GA uses ints internally)
         /// ga_get tells whether to call NGA_Get or NGA_Put (if true, call NGA_Get)
         void get_or_put_ga_batches(int MY_GA, std::vector<double>& ga_buf, bool ga_get);
+        /// Wrapper to perform DGEMM for GA arrays
+        void DF_Dgemm(int GA_left, int GA_right, int GA_final);
         //void block_K(double** Qmnp, int naux);
         virtual bool C1() const { return true; }
 
