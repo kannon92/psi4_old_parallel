@@ -167,7 +167,7 @@ void ParallelDFJK::compute_qmn()
     int my_rank = GA_Nodeid();
     int num_proc = GA_Nnodes();
 
-    if(auxiliary_->nbf() == test_memory)
+    if(true)
     {
        shell_per_process = auxiliary_->nshell() / num_proc;
        double memory_requirement= naux * nso * nso * 8.0 / (1024 * 1024 * 1024);
@@ -320,8 +320,8 @@ void ParallelDFJK::compute_qmn()
 
         }
 
-        NGA_Distribution(A_UV_GA, GA_Nodeid(), Auv_begin, Auv_end);
-        int ld = nso * nso;
+        //NGA_Distribution(A_UV_GA, GA_Nodeid(), Auv_begin, Auv_end);
+        //int ld = nso * nso;
         get_or_put_ga_batches(A_UV_GA, Auv, false);
     }
     if(profile_) printf("\n  P%d Auv took %8.6f s.", GA_Nodeid(), compute_Auv.get());
@@ -331,7 +331,7 @@ void ParallelDFJK::compute_qmn()
     if(profile_) printf("\n  P%d J^({-1/2}} took %8.6f s.", GA_Nodeid(), J_one_half_time.get());
 
     Timer GA_DGEMM;
-    GA_Dgemm('T', 'N', naux, nso * nso, naux, 1.0, J_12_GA_, A_UV_GA, 0.0, Q_UV_GA_);
+    GA_Dgemm('N', 'N', naux, nso * nso, naux, 1.0, J_12_GA_, A_UV_GA, 0.0, Q_UV_GA_);
     if(profile_) printf("\n  P%d DGEMM took %8.6f s.", GA_Nodeid(), GA_DGEMM.get());
 
     GA_Destroy(A_UV_GA);
