@@ -334,9 +334,14 @@ void ParallelDFJK::compute_qmn()
     GA_Dgemm('N', 'N', naux, nso * nso, naux, 1.0, J_12_GA_, A_UV_GA, 0.0, Q_UV_GA_);
     //DF_Dgemm(J_12_GA_, A_UV_GA, Q_UV_GA_);
     if(profile_) printf("\n  P%d DGEMM took %8.6f s.", GA_Nodeid(), GA_DGEMM.get());
+    local_quv_.resize(max_rows * nso * nso);
+    Timer get_local_quv;
+    get_or_put_ga_batches(Q_UV_GA_, local_quv_, true);
+    if(profile_) printf("\n P%d Get local_quv_ take %8.4f s.", GA_Nodeid(), get_local_quv.get());
 
     GA_Destroy(A_UV_GA);
     GA_Destroy(J_12_GA_);
+    GA_Destroy(Q_UV_GA_);
 }
 void ParallelDFJK::compute_J()
 {
@@ -351,23 +356,23 @@ void ParallelDFJK::compute_J()
     double* D_tempp = D_temp->pointer();
 
     ///Local q_uv for get and J_V
-    std::vector<double> q_uv_temp;
     std::vector<double> J_V;
     Timer Compute_J_all;
 
+    size_t local_naux = local_quv_.size() / num_nm;
+    J_V.resize(local_naux);
     ///Since Q_UV_GA is distributed via NAUX index,
     ///need to get locality information (where data is located)
     ///Since Q never changes via density, no need to be in loop
-    Timer ga_comm;
-    int begin_offset[2];
-    int end_offset[2];
-    NGA_Distribution(Q_UV_GA_,GA_Nodeid(), begin_offset, end_offset);
-    size_t q_uv_size = (end_offset[0] - begin_offset[0] + 1) * nso * nso;
-    q_uv_temp.resize(q_uv_size);
-    J_V.resize(end_offset[0] - begin_offset[0] + 1);
-    int stride = nso * nso;
-    get_or_put_ga_batches(Q_UV_GA_, q_uv_temp, true);
-    if(profile_) printf("\n P%d J_Get takes %8.4f s for %zu elements", GA_Nodeid(), ga_comm.get(), q_uv_size);
+    //Timer ga_comm;
+    //int begin_offset[2];
+    //int end_offset[2];
+    //NGA_Distribution(Q_UV_GA_,GA_Nodeid(), begin_offset, end_offset);
+    //size_t q_uv_size = (end_offset[0] - begin_offset[0] + 1) * nso * nso;
+    //q_uv_temp.resize(q_uv_size);
+    //int stride = nso * nso;
+    //get_or_put_ga_batches(Q_UV_GA_, q_uv_temp, true);
+    //if(profile_) printf("\n P%d J_Get takes %8.4f s for %zu elements", GA_Nodeid(), ga_comm.get(), q_uv_size);
     ///Start a loop over the densities
     //double local_ga_norm;
     //for(int quv = 0; quv < q_uv_size; quv++) local_ga_norm += q_uv_temp[quv] * q_uv_temp[quv];
@@ -384,13 +389,16 @@ void ParallelDFJK::compute_J()
 
         ///J_V = B^Q_{pq} D_{pq}
         Timer v_BD;
-        size_t local_naux = end_offset[0] - begin_offset[0] + 1;
-        C_DGEMV('N', local_naux, num_nm, 1.0, &q_uv_temp[0], num_nm, Dp[0], 1, 0.0, &J_V[0], 1);
+        //size_t local_naux = end_offset[0] - begin_offset[0] + 1;
+        //C_DGEMV('N', local_naux, num_nm, 1.0, &q_uv_temp[0], num_nm, Dp[0], 1, 0.0, &J_V[0], 1);
+        C_DGEMV('N', local_naux, num_nm, 1.0, &local_quv_[0], num_nm, Dp[0], 1, 0.0, &J_V[0], 1);
         if(profile_) printf("\n P%d (Q|MN) * D_{MN} takes %8.4f s. ", GA_Nodeid(), v_BD.get());
         double J_V_norm = 0.0;
         Timer J_BJ;
         ///J_{uv} = B^{Q}_{uv} J_V^{Q}
-        C_DGEMV('T', local_naux, num_nm, 1.0, &q_uv_temp[0], num_nm, &J_V[0], 1, 0.0, J_temp->pointer(), 1);
+        //C_DGEMV('T', local_naux, num_nm, 1.0, &q_uv_temp[0], num_nm, &J_V[0], 1, 0.0, J_temp->pointer(), 1);
+        C_DGEMV('T', local_naux, num_nm, 1.0, &local_quv_[0], num_nm, &J_V[0], 1, 0.0, J_temp->pointer(), 1);
+
         if(profile_) printf("\n P%d (B^{Q}_{uv} * J_V^{Q} takes %8.4f s", GA_Nodeid(), J_BJ.get());
         ///Since every processor has a copy of J_temp, sum all the parts and send to every process
         Timer all_reduce;
@@ -422,19 +430,22 @@ void ParallelDFJK::compute_K()
     int end_offset[2];
     int index = 0;
     ///Local q_uv for get and J_V
-    std::vector<double> q_uv_temp;
+    //std::vector<double> q_uv_temp;
 
     ///Since Q_UV_GA is distributed via NAUX index,
     ///need to get locality information (where data is located)
     ///Since Q never changes via density, no need to be in loop
-    Timer Get_K_GA;
-    NGA_Distribution(Q_UV_GA_,GA_Nodeid(), begin_offset, end_offset);
-    int stride = end_offset[1] - begin_offset[1] + 1;
-    size_t q_uv_size = (end_offset[0] - begin_offset[0] + 1) * stride;
-    size_t local_naux = (end_offset[0] - begin_offset[0] + 1);
-    q_uv_temp.resize(q_uv_size);
-    get_or_put_ga_batches(Q_UV_GA_, q_uv_temp, true);
-    if(profile_) printf("\n P%d GET_K takes %8.6f with %zu elements", GA_Nodeid(), Get_K_GA.get(), q_uv_size);
+    //Timer Get_K_GA;
+    //NGA_Distribution(Q_UV_GA_,GA_Nodeid(), begin_offset, end_offset);
+    //int stride = end_offset[1] - begin_offset[1] + 1;
+    //size_t q_uv_size = (end_offset[0] - begin_offset[0] + 1) * stride;
+    //size_t local_naux = (end_offset[0] - begin_offset[0] + 1);
+    //q_uv_temp.resize(q_uv_size);
+    //get_or_put_ga_batches(Q_UV_GA_, q_uv_temp, true);
+    //if(profile_) printf("\n P%d GET_K takes %8.6f with %zu elements", GA_Nodeid(), Get_K_GA.get(), q_uv_size);
+    size_t nso = primary_->nbf();
+    size_t stride     = nso * nso;
+    size_t local_naux = local_quv_.size() / stride;
 
  
 
@@ -458,7 +469,7 @@ void ParallelDFJK::compute_K()
         {
             Timer B_C_halftrans;
 
-            C_DGEMM('N', 'N', local_naux * nbf, nocc, nbf, 1.0, &q_uv_temp[0], nbf, Clp[0], nocc, 0.0, BQ_ui->pointer()[0], nocc);
+            C_DGEMM('N', 'N', local_naux * nbf, nocc, nbf, 1.0, &local_quv_[0], nbf, Clp[0], nocc, 0.0, BQ_ui->pointer()[0], nocc);
             if(profile_) printf("\n P%d B * C takes %8.4f", GA_Nodeid(), B_C_halftrans.get());
 
             Timer swap_index;
@@ -481,7 +492,7 @@ void ParallelDFJK::compute_K()
                 Bn_Qi = Bm_Qi;
             }
             else {
-            C_DGEMM('N', 'N',local_naux * nbf, nocc, nbf, 1.0, &q_uv_temp[0], nbf, Crp[0], nocc, 0.0, BQ_ui->pointer()[0], nocc);
+            C_DGEMM('N', 'N',local_naux * nbf, nocc, nbf, 1.0, &local_quv_[0], nbf, Crp[0], nocc, 0.0, BQ_ui->pointer()[0], nocc);
 
             #pragma omp parallel for
             for(int n = 0; n < local_naux; n++)
@@ -506,7 +517,6 @@ void ParallelDFJK::compute_K()
 }
 void ParallelDFJK::postiterations()
 {
-    GA_Destroy(Q_UV_GA_);
 }
 void ParallelDFJK::print_header() const
 {

@@ -983,7 +983,7 @@ class ParallelDFJK : public JK {
         int J_12_GA_  = 0;
         ///(Q|UV) tensor created in initialization of JK
         int Q_UV_GA_  = 0;
-        ///A vector of J and K global array matrices
+        std::vector<double> local_quv_;
 
         void preiterations();
         virtual void postiterations();
