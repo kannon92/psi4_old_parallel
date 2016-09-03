@@ -177,6 +177,7 @@ void ParallelDFJK::compute_qmn()
      double memory_in_gb      = memory_ / (1024.0 * 1024.0 * 1024.0);
      outfile->Printf("\n (Q|MN) takes up %8.5f GB out of %8.5f GB", memory_requirement, memory_in_gb);
      outfile->Printf("\n You need %8.2f nodes to fit (Q|MN) on parallel machine", memory_requirement / memory_in_gb);
+     outfile->Printf("\n This comes out to be about %8.2f GB per node", memory_requirment / (memory_in_gb * num_proc));
      ///Fuck it.  Just assume that user provided enough memory (or nodes) for now
      shell_per_process = auxiliary_->nshell() / num_proc;
 
@@ -266,7 +267,7 @@ void ParallelDFJK::compute_qmn()
     ///shell_start represents the start of shells for this processor
     ///shell_end represents the end of shells for this processor
     ///NOTE:  This code will have terrible load balance (shells do not correspond to equal number of functions
-    outfile->Printf("\n About to compute Auv");
+    outfile->Printf("\n About to create Auv with size %8.4f Gb", 8 * max_rows * nso * nso / (1024 * 1024 * 1024));
     Timer compute_Auv;
     {
         //boost::shared_ptr<Matrix> Auv(new Matrix("(Q|mn)", 8 * max_rows, nso * (unsigned long int) nso));
