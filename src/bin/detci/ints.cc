@@ -589,12 +589,14 @@ void CIWavefunction::transform_mcscf_ints_aodirect(bool approx_only)
         int j = D_vec[D_tasks].second[1];
         SharedMatrix J = jk_->J()[D_tasks];
         SharedMatrix half_trans = Matrix::triplet(Call, J, CAct, true, false, false);
+        #pragma omp parallel for schedule(static) 
         for(size_t p = 0; p < nmo_; p++){
             for(size_t q = 0; q < nact; q++){
                 casscf_ints->set(p * nact + q, i * nact + j, half_trans->get(p, q));
                 casscf_ints->set(p * nact + q, j * nact + i, half_trans->get(p, q));
             }
         }
+
     }
     outfile->Printf("\n Fill (pu | xy) integrals takes %8.6f s.", Fill_puxy.get());
     timer_off("CIWave: Filling the (pu|xy) integrals");
