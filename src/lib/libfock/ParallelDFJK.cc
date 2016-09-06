@@ -176,8 +176,8 @@ void ParallelDFJK::compute_qmn()
      double memory_requirement= naux * nso * nso * 8.0 / (1024 * 1024 * 1024);
      double memory_in_gb      = memory_ / (1024.0 * 1024.0 * 1024.0);
      outfile->Printf("\n (Q|MN) takes up %8.5f GB out of %8.5f GB", memory_requirement, memory_in_gb);
-     outfile->Printf("\n You need %8.2f nodes to fit (Q|MN) on parallel machine", memory_requirement / memory_in_gb);
-     outfile->Printf("\n This comes out to be about %8.2f GB per node", memory_requirment / (memory_in_gb * num_proc));
+     outfile->Printf("\n You need %8.4f nodes to fit (Q|MN) on parallel machine", memory_requirement / memory_in_gb);
+     outfile->Printf("\n Memory is %8.4f GB per node", memory_requirement / (memory_in_gb * num_proc));
      ///Fuck it.  Just assume that user provided enough memory (or nodes) for now
      shell_per_process = auxiliary_->nshell() / num_proc;
 
@@ -267,7 +267,7 @@ void ParallelDFJK::compute_qmn()
     ///shell_start represents the start of shells for this processor
     ///shell_end represents the end of shells for this processor
     ///NOTE:  This code will have terrible load balance (shells do not correspond to equal number of functions
-    outfile->Printf("\n About to create Auv with size %8.4f Gb", 8 * max_rows * nso * nso / (1024 * 1024 * 1024));
+    outfile->Printf("\n About to create Auv with size %8.4f Gb", 8.0 * max_rows * nso * nso / (1024 * 1024 * 1024));
     Timer compute_Auv;
     {
         //boost::shared_ptr<Matrix> Auv(new Matrix("(Q|mn)", 8 * max_rows, nso * (unsigned long int) nso));
@@ -287,6 +287,8 @@ void ParallelDFJK::compute_qmn()
         if(debug_) printf("\n P%d rows: %d (%d - %d)", GA_Nodeid(), rows, pstop, pstart);
         if(debug_) printf("\n P%d maxrows: %d", GA_Nodeid(), max_rows);
 
+        Timer compute_integrals_raw;
+        if(profile_) printf("\n P%d about to compute integrals", GA_Nodeid());
         #pragma omp parallel for schedule(dynamic) num_threads(nthread)
         for (long int PMN = 0L; PMN < nPshell * nshell_pairs; PMN++) {
 
@@ -323,7 +325,7 @@ void ParallelDFJK::compute_qmn()
             }}}
 
         }
-
+        if(profile_) printf("\n P%d Computing integrals takes %8.4f s.", GA_Nodeid(), compute_integrals_raw.get());
         //NGA_Distribution(A_UV_GA, GA_Nodeid(), Auv_begin, Auv_end);
         //int ld = nso * nso;
         Timer put_ga_auv;
