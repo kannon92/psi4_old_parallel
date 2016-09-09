@@ -112,9 +112,12 @@ boost::shared_ptr<JK> JK::build_JK(boost::shared_ptr<BasisSet> primary, Options&
 
         return boost::shared_ptr<JK>(jk);
         } else if (jk_type == "PARALLELDF") {
-        boost::shared_ptr<BasisSet> auxiliary = BasisSet::pyconstruct_auxiliary(primary->molecule(),
-            "DF_BASIS_SCF", options.get_str("DF_BASIS_SCF"), "JKFIT",
-            options.get_str("BASIS"), primary->has_puream());
+        //boost::shared_ptr<BasisSet> auxiliary = BasisSet::pyconstruct_auxiliary(primary->molecule(),
+        //    "DF_BASIS_SCF", options.get_str("DF_BASIS_SCF"), "JKFIT",
+        //    options.get_str("DF_BASIS_SCF"), primary->has_puream());
+        boost::shared_ptr<BasisSet> auxiliary = BasisSet::pyconstruct_orbital(primary->molecule(),
+            "DF_BASIS_SCF", options.get_str("DF_BASIS_SCF"), primary->has_puream());
+
 
         ParallelDFJK* jk = new ParallelDFJK(primary,auxiliary);
 

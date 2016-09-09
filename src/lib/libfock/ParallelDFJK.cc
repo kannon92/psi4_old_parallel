@@ -68,71 +68,76 @@ void ParallelDFJK::J_one_half()
     dims[0] = naux;
     dims[1] = naux;
     chunk[0] = -1;
-    chunk[1] = naux;
+    chunk[1] = -1;
     J_12_GA_ = NGA_Create(C_DBL, 2, dims, (char *)"J_1/2", chunk);
     if(not J_12_GA_)
         throw PSIEXCEPTION("Failure in creating J_^(-1/2) in GA");
 
-    boost::shared_ptr<IntegralFactory> Jfactory(new IntegralFactory(auxiliary_, BasisSet::zero_ao_basis_set(), auxiliary_, BasisSet::zero_ao_basis_set()));
-    std::vector<boost::shared_ptr<TwoBodyAOInt> > Jeri;
-    for (int thread = 0; thread < nthread; thread++) {
-        Jeri.push_back(boost::shared_ptr<TwoBodyAOInt>(Jfactory->eri()));
-    }
-
-    std::vector<std::pair<int, int> > Jpairs;
-    for (int M = 0; M < auxiliary_->nshell(); M++) {
-        for (int N = 0; N <= M; N++) {
-            Jpairs.push_back(std::pair<int,int>(M,N));
-        }
-    }
-    long int num_Jpairs = Jpairs.size();
-
-    #pragma omp parallel for schedule(dynamic) num_threads(nthread)
-    for (long int PQ = 0L; PQ < num_Jpairs; PQ++) {
-
-        int thread = 0;
-        #ifdef _OPENMP
-            thread = omp_get_thread_num();
-        #endif
-
-        std::pair<int,int> pair = Jpairs[PQ];
-        int P = pair.first;
-        int Q = pair.second;
-
-        Jeri[thread]->compute_shell(P,0,Q,0);
-
-        int np = auxiliary_->shell(P).nfunction();
-        int op = auxiliary_->shell(P).function_index();
-        int nq = auxiliary_->shell(Q).nfunction();
-        int oq = auxiliary_->shell(Q).function_index();
-
-        const double* buffer = Jeri[thread]->buffer();
-
-        for (int p = 0; p < np; p++) {
-        for (int q = 0; q < nq; q++) {
-            Jp[p + op][q + oq] =
-            Jp[q + oq][p + op] =
-                (*buffer++);
-        }}
-    }
-    Jfactory.reset();
-    Jeri.clear();
-
-    // > Invert J < //
-
-    J->power(-1.0/2.0, 1e-10);
-    outfile->Printf("\n JRMS: %8.8f", J->rms());
     if(GA_Nodeid() == 0)
     {
-        for(int me = 0; me < GA_Nnodes(); me++)
-        {
-            int begin_offset[2];
-            int end_offset[2];
-            NGA_Distribution(J_12_GA_, me, begin_offset, end_offset);
-            int offset = begin_offset[0];
-            NGA_Put(J_12_GA_, begin_offset, end_offset, J->pointer()[offset], &naux);
+        boost::shared_ptr<IntegralFactory> Jfactory(new IntegralFactory(auxiliary_, BasisSet::zero_ao_basis_set(), auxiliary_, BasisSet::zero_ao_basis_set()));
+        std::vector<boost::shared_ptr<TwoBodyAOInt> > Jeri;
+        for (int thread = 0; thread < nthread; thread++) {
+            Jeri.push_back(boost::shared_ptr<TwoBodyAOInt>(Jfactory->eri()));
         }
+
+        std::vector<std::pair<int, int> > Jpairs;
+        for (int M = 0; M < auxiliary_->nshell(); M++) {
+            for (int N = 0; N <= M; N++) {
+                Jpairs.push_back(std::pair<int,int>(M,N));
+            }
+        }
+        long int num_Jpairs = Jpairs.size();
+
+        #pragma omp parallel for schedule(dynamic) num_threads(nthread)
+        for (long int PQ = 0L; PQ < num_Jpairs; PQ++) {
+
+            int thread = 0;
+            #ifdef _OPENMP
+                thread = omp_get_thread_num();
+            #endif
+
+            std::pair<int,int> pair = Jpairs[PQ];
+            int P = pair.first;
+            int Q = pair.second;
+
+            Jeri[thread]->compute_shell(P,0,Q,0);
+
+            int np = auxiliary_->shell(P).nfunction();
+            int op = auxiliary_->shell(P).function_index();
+            int nq = auxiliary_->shell(Q).nfunction();
+            int oq = auxiliary_->shell(Q).function_index();
+
+            const double* buffer = Jeri[thread]->buffer();
+
+            for (int p = 0; p < np; p++) {
+            for (int q = 0; q < nq; q++) {
+                Jp[p + op][q + oq] =
+                Jp[q + oq][p + op] =
+                    (*buffer++);
+            }}
+        }
+        Jfactory.reset();
+        Jeri.clear();
+
+        // > Invert J < //
+
+        J->power(-1.0/2.0, 1e-10);
+        outfile->Printf("\n JRMS: %8.8f", J->rms());
+        //for(int me = 0; me < GA_Nnodes(); me++)
+        //{
+        int begin_offset[2];
+        int end_offset[2];
+        //NGA_Distribution(J_12_GA_, me, begin_offset, end_offset);
+        begin_offset[0] = 0;
+        begin_offset[1] = 0;
+        end_offset[0]   = naux - 1;
+        end_offset[1]   = naux - 1;
+        int offset = begin_offset[0];
+        NGA_Put(J_12_GA_, begin_offset, end_offset, J->pointer()[0], &naux);
+       // }
     }
+
 }
 void ParallelDFJK::compute_qmn()
 {
@@ -171,7 +176,8 @@ void ParallelDFJK::compute_qmn()
      double memory_requirement= naux * nso * nso * 8.0 / (1024 * 1024 * 1024);
      double memory_in_gb      = memory_ / (1024.0 * 1024.0 * 1024.0);
      outfile->Printf("\n (Q|MN) takes up %8.5f GB out of %8.5f GB", memory_requirement, memory_in_gb);
-     outfile->Printf("\n You need %8.2f nodes to fit (Q|MN) on parallel machine", memory_requirement / memory_in_gb);
+     outfile->Printf("\n You need %8.4f nodes to fit (Q|MN) on parallel machine", memory_requirement / memory_in_gb);
+     outfile->Printf("\n Memory is %8.4f GB per node", memory_requirement / (memory_in_gb * num_proc));
      ///Fuck it.  Just assume that user provided enough memory (or nodes) for now
      shell_per_process = auxiliary_->nshell() / num_proc;
 
@@ -261,7 +267,7 @@ void ParallelDFJK::compute_qmn()
     ///shell_start represents the start of shells for this processor
     ///shell_end represents the end of shells for this processor
     ///NOTE:  This code will have terrible load balance (shells do not correspond to equal number of functions
-    outfile->Printf("\n About to compute Auv");
+    outfile->Printf("\n About to create Auv with size %8.4f Gb", 8.0 * max_rows * nso * nso / (1024 * 1024 * 1024));
     Timer compute_Auv;
     {
         //boost::shared_ptr<Matrix> Auv(new Matrix("(Q|mn)", 8 * max_rows, nso * (unsigned long int) nso));
@@ -281,6 +287,8 @@ void ParallelDFJK::compute_qmn()
         if(debug_) printf("\n P%d rows: %d (%d - %d)", GA_Nodeid(), rows, pstop, pstart);
         if(debug_) printf("\n P%d maxrows: %d", GA_Nodeid(), max_rows);
 
+        Timer compute_integrals_raw;
+        if(profile_) printf("\n P%d about to compute integrals", GA_Nodeid());
         #pragma omp parallel for schedule(dynamic) num_threads(nthread)
         for (long int PMN = 0L; PMN < nPshell * nshell_pairs; PMN++) {
 
@@ -317,7 +325,7 @@ void ParallelDFJK::compute_qmn()
             }}}
 
         }
-
+        if(profile_) printf("\n P%d Computing integrals takes %8.4f s.", GA_Nodeid(), compute_integrals_raw.get());
         //NGA_Distribution(A_UV_GA, GA_Nodeid(), Auv_begin, Auv_end);
         //int ld = nso * nso;
         Timer put_ga_auv;
