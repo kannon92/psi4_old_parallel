@@ -264,13 +264,18 @@ void SOMCSCF::update(SharedMatrix Cocc, SharedMatrix Cact, SharedMatrix Cvir,
     SharedMatrix CL_COPDM = Matrix::doublet(matrices_["Cact"], matrices_["OPDM"]);
     Cl.push_back(CL_COPDM);
     Cr.push_back(matrices_["Cact"]);
+    
+    Timer Update_Fock;
 
     jk_->compute();
+
+    outfile->Printf("\n Computing ^IF and ^AF for orbital gradient takes %8.4f s.", Update_Fock.get());
 
     const std::vector<SharedMatrix>& J = jk_->J();
     const std::vector<SharedMatrix>& K = jk_->K();
 
     // IFock build
+    Timer Build_IFock;
     J[0]->scale(2.0);
     J[0]->subtract(K[0]);
     J[0]->add(matrices_["H"]);
@@ -279,15 +284,21 @@ void SOMCSCF::update(SharedMatrix Cocc, SharedMatrix Cact, SharedMatrix Cvir,
     }
     matrices_["IFock"] = Matrix::triplet(matrices_["C"], J[0], matrices_["C"], true, false, false);
     matrices_["IFock"]->set_name("IFock");
+    outfile->Printf("\n Computing ^IF takes %8.4f s.", Build_IFock.get());
 
     // AFock build
+    Timer Build_AFock;
     K[1]->scale(0.5);
     J[1]->subtract(K[1]);
     matrices_["AFock"] = Matrix::triplet(matrices_["C"], J[1], matrices_["C"], true, false, false);
     matrices_["AFock"]->set_name("AFock");
+    outfile->Printf("\n Computing ^AF takes %8.4f s.", Build_AFock.get());
 
+    Timer Compute_Q_Time;
     compute_Q();
+    outfile->Printf("\n Computing Q takes %8.4f s.", Compute_Q_Time.get());
 
+    Timer Generalized_Fock_Time;
     // => Generalized Fock matrix <= //
     matrices_["Fock"] = SharedMatrix(new Matrix("Generalized Fock", nirrep_, nmopi_, nmopi_));
     double *Fp, *IFp, *AFp, *Qp, *OPDMp;
@@ -320,8 +331,10 @@ void SOMCSCF::update(SharedMatrix Cocc, SharedMatrix Cact, SharedMatrix Cvir,
             }
         }
     }
+    outfile->Printf("\n Generalized Fock takes %8.4f s.", Generalized_Fock_Time.get());
     // matrices_["Fock"]->print();
 
+    Timer Orbital_Gradient;
     // => Orbtial Gradient <= //
     matrices_["Gradient"] = SharedMatrix(new Matrix("Gradient", nirrep_, noapi_, navpi_));
     for (int h=0; h<nirrep_; h++){
@@ -342,10 +355,13 @@ void SOMCSCF::update(SharedMatrix Cocc, SharedMatrix Cact, SharedMatrix Cvir,
             }
         }
     }
+    outfile->Printf("\n Orbital_Gradient takes %8.4f s.", Orbital_Gradient.get());
     zero_redundant(matrices_["Gradient"]);
     timer_off("SOMCSCF: Compute Gradient");
-    outfile->Printf("\n Gradient took %8.8f s", Compute_Gradient.get());
+    Timer diagonal_hessian;
     matrices_["Precon"] = H_approx_diag();
+    outfile->Printf("\n Diagonal Hessian takes %8.4f s.", diagonal_hessian.get());
+    outfile->Printf("\n Gradient took %8.8f s", Compute_Gradient.get());
 }
 SharedMatrix SOMCSCF::H_approx_diag()
 {
