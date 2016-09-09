@@ -6,9 +6,11 @@
 #include "../lib3index/3index.h"
 #include "../libqt/qt.h"
 #include <omp.h>
-#include <ga.h>
-#include <macdecls.h>
-#include <mpi.h>
+#ifdef HAVE_GA
+    #include <ga.h>
+    #include <macdecls.h>
+    #include <mpi.h>
+#endif
 namespace psi {
 
 ParallelDFJK::ParallelDFJK(boost::shared_ptr<BasisSet> primary, boost::shared_ptr<BasisSet> auxiliary) : JK(primary), auxiliary_(auxiliary)
