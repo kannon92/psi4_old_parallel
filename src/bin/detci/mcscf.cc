@@ -154,8 +154,9 @@ void CIWavefunction::compute_mcscf()
     	outfile->Printf("\n Solving CI takes %8.8f s", solve_ci.get());
     	Timer form_pdm;
     	form_opdm();
+    	outfile->Printf("\n Computing 1-PDM took %8.4f s", form_pdm.get());
     	form_tpdm();
-    	outfile->Printf("\n Computing PDM took %8.4f s", form_pdm.get());
+    	outfile->Printf("\n Computing 1 and 2-PDM took %8.4f s", form_pdm.get());
     }
 
     current_energy = Process::environment.globals["MCSCF TOTAL ENERGY"];

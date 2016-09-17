@@ -3630,11 +3630,14 @@ def run_detcas(name, **kwargs):
 
     # The non-DF case
     else:
+
         if not psi4.has_option_changed('SCF', 'SCF_TYPE'):
             psi4.set_global_option('SCF_TYPE', 'PK')
 
         # Ensure IWL files have been written
-        proc_util.check_iwl_file_from_scf_type(psi4.get_option('SCF', 'SCF_TYPE'), ref_wfn)
+        #psi4proc_util.check_iwl_file_from_scf_type(psi4.get_option('SCF', 'SCF_TYPE'), ref_wfn)
+        # print "Hey Dummy, generate the integrals first if you use MCSCF_TYPE == CONV"
+
 
     # Second-order SCF requires non-symmetric density matrix support
     if psi4.get_option('DETCI', 'MCSCF_SO'):

@@ -165,7 +165,9 @@ SharedMatrix SOMCSCF::Ck(SharedMatrix C, SharedMatrix x)
    }
    else if(ck_algorithm_ == "EXPM")
    {
+	Timer expm_function;
         tmp->expm();
+	outfile->Printf("\n EXPM_FUNCTION takes %4.4f s", expm_function.get());
    }
    else {
         outfile->Printf("\n CK_ALGORITHM was %s but it should be either TAYLOR or EXPM", ck_algorithm_.c_str());
