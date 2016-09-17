@@ -398,6 +398,7 @@ void CIWavefunction::setup_mcscf_ints_aodirect()
     jk_->set_allow_desymmetrization(true);
     jk_->set_do_K(true);
     jk_->initialize();
+    jk_->set_memory(Process::environment.get_memory() * 0.8);
     ints_init_ = true;
     timer_off("CIWAVE: Setup MCSCF INTS AO");
 }
