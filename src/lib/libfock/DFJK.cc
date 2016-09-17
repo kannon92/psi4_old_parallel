@@ -424,11 +424,12 @@ void DFJK::preiterations()
     is_core_ =  is_core();
 
 
+    Timer init_qmn;
     if (is_core_)
         initialize_JK_core();
     else
         initialize_JK_disk();
-
+    outfile->Printf("\n Initialize_DFJK takes %8.4f s.", init_qmn.get());
     if (do_wK_) {
         if (is_core_)
             initialize_wK_core();
@@ -442,6 +443,7 @@ void DFJK::compute_JK()
     max_nocc_ = max_nocc();
     max_rows_ = max_rows();
 
+    Timer time_dfjk;
     if (do_J_ || do_K_) {
         initialize_temps();
         if (is_core_)
@@ -450,6 +452,7 @@ void DFJK::compute_JK()
             manage_JK_disk();
         free_temps();
     }
+    outfile->Printf("\n Computing both J and K takes $8.4f s.", time_dfjk.get());
 
     if (do_wK_) {
         initialize_w_temps();
@@ -1669,13 +1672,17 @@ void DFJK::manage_JK_disk()
 
         if (do_J_) {
             timer_on("JK: J");
+            Timer compute_block_j;
             block_J(&Qmn_->pointer()[0],naux);
             timer_off("JK: J");
+            outfile->Printf("\n Compute J takes %8.4f s on %d blocks", compute_block_j.get(), Q);
         }
         if (do_K_) {
             timer_on("JK: K");
+            Timer compute_block_k;
             block_K(&Qmn_->pointer()[0],naux);
             timer_off("JK: K");
+            outfile->Printf("\n Compute K takes %8.4f s on %d blocks", compute_block_k.get(), Q);
         }
     }
     psio_->close(unit_,1);

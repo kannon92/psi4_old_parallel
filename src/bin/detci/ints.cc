@@ -382,6 +382,8 @@ void CIWavefunction::setup_mcscf_ints() {
 }
 void CIWavefunction::setup_mcscf_ints_aodirect()
 {
+    outfile->Printf("\n   ==> Setting up MCSCF integrals <==\n\n");
+
     timer_on("CIWAVE: Setup MCSCF INTS AO");
     if(options_.get_str("SCF_TYPE") == "GTFOCK")
     {
@@ -397,8 +399,8 @@ void CIWavefunction::setup_mcscf_ints_aodirect()
     jk_->set_do_J(true);
     jk_->set_allow_desymmetrization(true);
     jk_->set_do_K(true);
-    jk_->initialize();
     jk_->set_memory(Process::environment.get_memory() * 0.8);
+    jk_->initialize();
     ints_init_ = true;
     timer_off("CIWAVE: Setup MCSCF INTS AO");
 }
