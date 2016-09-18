@@ -243,7 +243,9 @@ void CIWavefunction::compute_mcscf()
     set_orbitals("ROT", new_orbs);
 
     // Transform integrals
+    Timer overall_transform;
     transform_mcscf_integrals(!MCSCF_Parameters_->orbital_so);
+    outfile->Printf("\n Overall Integral Transform takes %8.4f s.", overall_transform.get());
     outfile->Printf("%s Iter %3d:  % 5.14lf   % 1.4e  % 1.4e  %2d   %s   % 1.6e\n", mcscf_type.c_str(), iter,
                     current_energy, ediff, grad_rms, Parameters_->diag_iters_taken,
                     itertype.c_str(), mcscf_iteration.get());
