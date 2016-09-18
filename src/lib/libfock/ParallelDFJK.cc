@@ -173,9 +173,11 @@ void ParallelDFJK::compute_qmn()
     int num_proc = GA_Nnodes();
 
      shell_per_process = auxiliary_->nshell() / num_proc;
-     double memory_requirement= naux * nso * nso * 8.0 / (1024 * 1024 * 1024);
+     double memory_requirement= 2.0 * naux * nso * nso * 8.0;
+     memory_requirement += (8.0 * naux * naux);
+     memory_requirement /= (1024.0 * 1024.0 * 1024.0);
      double memory_in_gb      = memory_ / (1024.0 * 1024.0 * 1024.0);
-     outfile->Printf("\n (Q|MN) takes up %8.5f GB out of %8.5f GB", memory_requirement, memory_in_gb);
+     outfile->Printf("\n ParallelDF needs %8.5f GB out of %8.5f GB", memory_requirement, memory_in_gb);
      outfile->Printf("\n You need %8.4f nodes to fit (Q|MN) on parallel machine", memory_requirement / memory_in_gb);
      outfile->Printf("\n Memory is %8.4f GB per node", memory_requirement / (memory_in_gb * num_proc));
      ///Fuck it.  Just assume that user provided enough memory (or nodes) for now
@@ -230,17 +232,23 @@ void ParallelDFJK::compute_qmn()
     printf("\n  P%d shell_start: %d shell_end: %d function_start: %d function_end: %d", GA_Nodeid(), shell_start, shell_end, function_start, function_end);
     printf("\n P%d max_rows: %d", GA_Nodeid(), max_rows);
     map[GA_Nnodes()] = 0;
+    outfile->Printf("\n About to create A_UV");
     int A_UV_GA = NGA_Create_irreg(C_DBL, 2, dims, (char *)"Auv_temp", chunk, map);
     if(not A_UV_GA)
     {
+        outfile->Printf("\n GA failed to create (A|UV)");
         throw PSIEXCEPTION("GA failed on creating Aia_ga");
     }
     GA_Print_distribution(A_UV_GA);
     Q_UV_GA_ = GA_Duplicate(A_UV_GA, (char *)"Q|PQ");
     if(not Q_UV_GA_)
     {
+        outfile->Printf("\n GA failed to create (Q|UV) via duplicate");
         throw PSIEXCEPTION("GA failed on creating GA_Q_PQ");
     }
+    outfile->Printf("\n Created (A|UV) and (Q|UV) on P0");
+    if(GA_Nodeid() > 1)
+        printf("\n Created (A|UV) and (Q|UV) on P%d", GA_Nodeid());
 
     // => ERI Objects <= //
 
@@ -267,7 +275,6 @@ void ParallelDFJK::compute_qmn()
     ///shell_start represents the start of shells for this processor
     ///shell_end represents the end of shells for this processor
     ///NOTE:  This code will have terrible load balance (shells do not correspond to equal number of functions
-    outfile->Printf("\n About to create Auv with size %8.4f Gb", 8.0 * max_rows * nso * nso / (1024 * 1024 * 1024));
     Timer compute_Auv;
     {
         //boost::shared_ptr<Matrix> Auv(new Matrix("(Q|mn)", 8 * max_rows, nso * (unsigned long int) nso));
