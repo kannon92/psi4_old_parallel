@@ -399,8 +399,8 @@ void CIWavefunction::setup_mcscf_ints_aodirect()
     jk_->set_do_J(true);
     jk_->set_allow_desymmetrization(true);
     jk_->set_do_K(true);
-    jk_->set_memory(Process::environment.get_memory() * 0.8);
     jk_->initialize();
+    jk_->set_memory(Process::environment.get_memory() * 0.8);
     ints_init_ = true;
     timer_off("CIWAVE: Setup MCSCF INTS AO");
 }
@@ -422,10 +422,12 @@ void CIWavefunction::transform_mcscf_ints_aodirect(bool approx_only)
     outfile->Printf("\n   ==> Transforming CI integrals aodirect <==\n");
     timer_on("CIWave: Parallel MCSCF integral transform");
     Timer ParallelMCSCF_per_iter;
+    Timer setup_ints;
     if(!ints_init_)
     {
         setup_mcscf_ints_aodirect();
     }
+    outfile->Printf("\n setup_ints takes %8.4f s.", setup_ints.get());
     int nact = CalcInfo_->num_ci_orbs;
 
     SharedMatrix Ca_sym = this->Ca();

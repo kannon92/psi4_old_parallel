@@ -279,18 +279,18 @@ void DFJK::print_header() const
 bool DFJK::is_core() const
 {
     size_t ntri = sieve_->function_pairs().size();
-    ULI three_memory = ((ULI)auxiliary_->nbf())*ntri;
-    ULI two_memory = ((ULI)auxiliary_->nbf())*auxiliary_->nbf();
+    size_t double_size = sizeof(double);
+    ULI three_memory = ((ULI)auxiliary_->nbf())*ntri * double_size;;
+    ULI two_memory = ((ULI)auxiliary_->nbf())*auxiliary_->nbf() * double_size;
 
     size_t mem = memory_;
     mem -= memory_overhead();
     mem -= memory_temp();
-
     // Two is for buffer space in fitting
     if (do_wK_)
         return (3L*three_memory + 2L*two_memory < memory_);
     else
-        return (three_memory + 2L*two_memory < memory_);
+        return ( three_memory + 2L*two_memory < memory_);
 }
 unsigned long int DFJK::memory_temp() const
 {
@@ -307,25 +307,30 @@ int DFJK::max_rows() const
 {
     // Start with all memory
     unsigned long int mem = memory_;
+    size_t double_size = sizeof(double);
     // Subtract J/K/wK/C/D overhead
     mem -= memory_overhead();
     // Subtract threading temp overhead
-    mem -= memory_temp();
+    mem -= memory_temp() * double_size;
 
     // How much will each row cost?
     unsigned long int row_cost = 0L;
     // Copies of E tensor
     row_cost += (lr_symmetric_ ? 1L : 2L) * max_nocc() * primary_->nbf();
     // Slices of Qmn tensor, including AIO buffer (NOTE: AIO not implemented yet)
-    row_cost += (is_core_ ? 1L : 1L) * sieve_->function_pairs().size();
+    row_cost += (is_core_ ? auxiliary_->nbf() : 1L) * sieve_->function_pairs().size();
 
-    unsigned long int max_rows = mem / row_cost;
+    unsigned long int max_rows = mem / (double_size * row_cost);
 
     if (max_rows > (unsigned long int) auxiliary_->nbf())
         max_rows = (unsigned long int) auxiliary_->nbf();
     if (max_rows < 1L)
         max_rows = 1L;
 
+    size_t three_int = max_rows * primary_->nbf() * max_nocc() * 8;
+    if(three_int > memory_){
+        outfile->Printf("Something is going wrong with memory check: max_rows: %d three_int %lu memory_ %lu", max_rows, three_int, memory_);
+    }
     return (int) max_rows;
 }
 int DFJK::max_nocc() const
@@ -422,6 +427,14 @@ void DFJK::preiterations()
 
     // Core or disk?
     is_core_ =  is_core();
+    // KPH is confused.  
+    // It seems that is_core() checks whether or not (Q|MN) can fit in core
+    // But, max_rows can still be naux..
+    // I think that if max_rows() != auxiliary_->nbf() than use disk algorithm
+    //if(max_rows() != auxiliary_->nbf())
+    //{
+    //    is_core_ = false;
+    //}
 
 
     Timer init_qmn;
@@ -430,6 +443,7 @@ void DFJK::preiterations()
     else
         initialize_JK_disk();
     outfile->Printf("\n Initialize_DFJK takes %8.4f s.", init_qmn.get());
+    outfile->Printf("\n max_nocc: %d max_rows: %d", max_nocc(), max_rows());
     if (do_wK_) {
         if (is_core_)
             initialize_wK_core();
