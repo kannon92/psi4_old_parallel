@@ -452,7 +452,7 @@ void DFJK::compute_JK()
             manage_JK_disk();
         free_temps();
     }
-    outfile->Printf("\n Computing both J and K takes $8.4f s.", time_dfjk.get());
+    outfile->Printf("\n Computing both J and K takes %8.4f s.", time_dfjk.get());
 
     if (do_wK_) {
         initialize_w_temps();
