@@ -349,14 +349,20 @@ void ParallelDFJK::compute_qmn()
     GA_Dgemm('N', 'N', naux, nso * nso, naux, 1.0, J_12_GA_, A_UV_GA, 0.0, Q_UV_GA_);
     //DF_Dgemm(J_12_GA_, A_UV_GA, Q_UV_GA_);
     if(profile_) printf("\n  P%d DGEMM took %8.6f s.", GA_Nodeid(), GA_DGEMM.get());
+    outfile->Printf("\n GA_Dgemm takes %8.4f s.", GA_DGEMM.get());
     local_quv_.resize(max_rows * nso * nso);
     Timer get_local_quv;
     get_or_put_ga_batches(Q_UV_GA_, local_quv_, true);
     if(profile_) printf("\n P%d Get local_quv_ take %8.4f s.", GA_Nodeid(), get_local_quv.get());
+    outfile->Printf("\n Get local_quv takes %8.4f s.", get_local_quv.get());
 
+    Timer destroy_ga_arrays;
     GA_Destroy(A_UV_GA);
+    if(profile_) printf("\n P%d Destroyed A_UV takes %8.4f s.", destroy_ga_arrays.get());
     GA_Destroy(J_12_GA_);
+    if(profile_) printf("\n P%d Destroyed J_{12} takes %8.4f s.", destroy_ga_arrays.get());
     GA_Destroy(Q_UV_GA_);
+    if(profile_) printf("\n P%d Destroyed Q_UV takes %8.4f s.", destroy_ga_arrays.get());
 }
 void ParallelDFJK::compute_J()
 {
