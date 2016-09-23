@@ -382,22 +382,6 @@ void ParallelDFJK::compute_J()
 
     size_t local_naux = local_quv_.size() / num_nm;
     J_V.resize(local_naux);
-    ///Since Q_UV_GA is distributed via NAUX index,
-    ///need to get locality information (where data is located)
-    ///Since Q never changes via density, no need to be in loop
-    //Timer ga_comm;
-    //int begin_offset[2];
-    //int end_offset[2];
-    //NGA_Distribution(Q_UV_GA_,GA_Nodeid(), begin_offset, end_offset);
-    //size_t q_uv_size = (end_offset[0] - begin_offset[0] + 1) * nso * nso;
-    //q_uv_temp.resize(q_uv_size);
-    //int stride = nso * nso;
-    //get_or_put_ga_batches(Q_UV_GA_, q_uv_temp, true);
-    //if(profile_) printf("\n P%d J_Get takes %8.4f s for %zu elements", GA_Nodeid(), ga_comm.get(), q_uv_size);
-    ///Start a loop over the densities
-    //double local_ga_norm;
-    //for(int quv = 0; quv < q_uv_size; quv++) local_ga_norm += q_uv_temp[quv] * q_uv_temp[quv];
-    //printf("\n P%d J: q_uv_norm: %8.8f", GA_Nodeid(), sqrt(local_ga_norm));
 
     for(size_t N = 0; N < J_ao_.size(); N++)
     {
@@ -406,9 +390,7 @@ void ParallelDFJK::compute_J()
         ///Q_UV_GA is distributed with auxiliary_index
         double** Dp = D_ao_[N]->pointer();
         double** Jp = J_ao_[N]->pointer();
-        //C_DCOPY(nso * nso, Dp[0], 1,D_temp->pointer(), 1);
-
-        ///J_V = B^Q_{pq} D_{pq}
+        ///J_Q = B^Q_{pq} D_{pq}
         Timer v_BD;
         //size_t local_naux = end_offset[0] - begin_offset[0] + 1;
         //C_DGEMV('N', local_naux, num_nm, 1.0, &q_uv_temp[0], num_nm, Dp[0], 1, 0.0, &J_V[0], 1);
@@ -450,25 +432,9 @@ void ParallelDFJK::compute_K()
     int begin_offset[2];
     int end_offset[2];
     int index = 0;
-    ///Local q_uv for get and J_V
-    //std::vector<double> q_uv_temp;
-
-    ///Since Q_UV_GA is distributed via NAUX index,
-    ///need to get locality information (where data is located)
-    ///Since Q never changes via density, no need to be in loop
-    //Timer Get_K_GA;
-    //NGA_Distribution(Q_UV_GA_,GA_Nodeid(), begin_offset, end_offset);
-    //int stride = end_offset[1] - begin_offset[1] + 1;
-    //size_t q_uv_size = (end_offset[0] - begin_offset[0] + 1) * stride;
-    //size_t local_naux = (end_offset[0] - begin_offset[0] + 1);
-    //q_uv_temp.resize(q_uv_size);
-    //get_or_put_ga_batches(Q_UV_GA_, q_uv_temp, true);
-    //if(profile_) printf("\n P%d GET_K takes %8.6f with %zu elements", GA_Nodeid(), Get_K_GA.get(), q_uv_size);
     size_t nso = primary_->nbf();
     size_t stride     = nso * nso;
     size_t local_naux = local_quv_.size() / stride;
-
- 
 
     size_t K_size = K_ao_.size();
     Timer Compute_K_all;
@@ -492,13 +458,15 @@ void ParallelDFJK::compute_K()
 
             C_DGEMM('N', 'N', local_naux * nbf, nocc, nbf, 1.0, &local_quv_[0], nbf, Clp[0], nocc, 0.0, BQ_ui->pointer()[0], nocc);
             if(profile_) printf("\n P%d B * C takes %8.4f", GA_Nodeid(), B_C_halftrans.get());
+	    if(profile_) outfile->Printf("\n B * C takes %8.4f", B_C_halftrans.get());
 
             Timer swap_index;
             #pragma omp parallel for
             for(int n = 0; n < local_naux; n++)
                 for(int m = 0; m < nbf; m++)
                     C_DCOPY(nocc, &BQ_ui->pointer()[0][n * nbf * nocc + m * nocc], 1, &Bm_Qi->pointer()[0][m * local_naux * nocc + n * nocc], 1);
-            if(profile_) printf("\n P%d Bm_Qi to BQ_ui takes %8.4f s", GA_Nodeid(), swap_index.get());
+            if(profile_) printf("\n P%d Bm_Qi to BQ_ui takes %8.4f s.", GA_Nodeid(), swap_index.get());
+	    if(profile_) outfile->Printf("\n Bm_Qi to BQ_ui takes %8.4f s.", swap_index.get());
 
         if(lr_symmetric_)
             Bn_Qi = Bm_Qi;
@@ -522,17 +490,19 @@ void ParallelDFJK::compute_K()
 
             }
             if(profile_) printf("\n P%d Half trans right side takes %8.4f s", GA_Nodeid(), B_C_righttrans.get()); 
+	    if(profile_) outfile->Printf("\n Half trans right size takes %8.4f s.", B_C_righttrans.get());
         }
         SharedMatrix local_K(new Matrix("K", nbf, nbf));
         Timer Final_K;
         C_DGEMM('N','T', nbf, nbf, local_naux * nocc, 1.0, Bm_Qi->pointer()[0], local_naux * nocc, Bn_Qi->pointer()[0], local_naux * nocc, 0.0, local_K->pointer()[0], nbf);
         if(profile_) printf("\n P%d Final_K takes %8.4f s and norm is %8.4f", GA_Nodeid(), Final_K.get(), local_K->rms());
+        if(profile_) outfile->Printf("\nFinal_K takes %8.4f s and norm is %8.4f", Final_K.get(), local_K->rms());
         
         Timer ALLREDUCE;
         MPI_Allreduce(local_K->pointer()[0],Kp[0], nbf * nbf, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
         if(profile_) printf("\n P%d ALLREDUCE takes %8.4f s", GA_Nodeid(), ALLREDUCE.get());
+	if(profile_) outfile->Printf("\n ALLREDUCE takes %8.4f s.", ALLREDUCE.get());
         
-
     }
     printf("\n P%d for Compute K with %d densities %8.4f s", GA_Nodeid(), D_ao_.size(), Compute_K_all.get());
 }
