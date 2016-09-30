@@ -1067,6 +1067,8 @@ void CIWavefunction::onel_ints_from_jk() {
     J[0]->add(H_);
     CalcInfo_->so_onel_ints = J[0]->clone();
     SharedMatrix onel_ints = Matrix::triplet(Cact, J[0], Cact, true, false, false);
+    outfile->Printf("\n ActiveIFock");
+    onel_ints->print();
 
     // Set 1D onel ints
     pitzer_to_ci_order_onel(onel_ints, CalcInfo_->onel_ints);

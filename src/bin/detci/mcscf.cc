@@ -62,10 +62,12 @@ void CIWavefunction::compute_mcscf()
   if (MCSCF_Parameters_->mcscf_type == "DF"){
     transform_dfmcscf_ints(!MCSCF_Parameters_->orbital_so);
     somcscf = boost::shared_ptr<SOMCSCF>(new DFSOMCSCF(jk_, dferi_, AO2SO_, H_));
+    somcscf->set_inactive_fock(CalcInfo_->so_onel_ints);
   }
   else if (MCSCF_Parameters_->mcscf_type == "CONV_PARALLEL"){
     transform_mcscf_ints_aodirect(true);
     somcscf = boost::shared_ptr<SOMCSCF>(new IncoreSOMCSCF(jk_, AO2SO_, H_));
+    somcscf->set_inactive_fock(CalcInfo_->so_onel_ints);
   }
   else {
     transform_mcscf_ints(!MCSCF_Parameters_->orbital_so);
@@ -245,6 +247,7 @@ void CIWavefunction::compute_mcscf()
     // Transform integrals
     Timer overall_transform;
     transform_mcscf_integrals(!MCSCF_Parameters_->orbital_so);
+    somcscf->set_inactive_fock(CalcInfo_->so_onel_ints);
     outfile->Printf("\n Overall Integral Transform takes %8.4f s.", overall_transform.get());
     outfile->Printf("%s Iter %3d:  % 5.14lf   % 1.4e  % 1.4e  %2d   %s   % 1.6e\n", mcscf_type.c_str(), iter,
                     current_energy, ediff, grad_rms, Parameters_->diag_iters_taken,

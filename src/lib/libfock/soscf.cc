@@ -111,6 +111,14 @@ void SOMCSCF::set_frozen_orbitals(SharedMatrix Cfzc)
         has_fzc_ = true;
     }
 }
+void SOMCSCF::set_inactive_fock(SharedMatrix IFock_AO)
+{
+    if(matrices_["H"]->nrow() != IFock_AO->nrow() and matrices_["H"]->ncol() != IFock_AO->ncol())
+    {
+        throw PSIEXCEPTION("Please pass a AO based IFock operator to set_inactive_fock");
+    }
+    matrices_["IFock_AO"] = IFock_AO;
+}
 double SOMCSCF::rhf_energy(SharedMatrix C)
 {
     std::vector<SharedMatrix>& Cl = jk_->C_left();
@@ -259,8 +267,15 @@ void SOMCSCF::update(SharedMatrix Cocc, SharedMatrix Cact, SharedMatrix Cvir,
     Cr.clear();
 
     // For inactive Fock
-    Cl.push_back(matrices_["Cocc"]);
-    Cr.push_back(matrices_["Cocc"]);
+    bool user_pass_ifock = false;
+    if(matrices_.count("IFock_AO"))
+    {
+        user_pass_ifock=true;
+    }
+    else {
+        Cl.push_back(matrices_["Cocc"]);
+        Cr.push_back(matrices_["Cocc"]);
+    }
 
     // For active Fock
     SharedMatrix CL_COPDM = Matrix::doublet(matrices_["Cact"], matrices_["OPDM"]);
@@ -277,23 +292,42 @@ void SOMCSCF::update(SharedMatrix Cocc, SharedMatrix Cact, SharedMatrix Cvir,
     const std::vector<SharedMatrix>& K = jk_->K();
 
     // IFock build
+    // If user passed IFock to SOMCSCF, make sure to not compute IF (save at least one fock build)
     Timer Build_IFock;
-    J[0]->scale(2.0);
-    J[0]->subtract(K[0]);
-    J[0]->add(matrices_["H"]);
-    if (has_fzc_){
-        J[0]->add(matrices_["FZC_JK_AO"]);
+    if(not user_pass_ifock)
+    {
+        J[0]->scale(2.0);
+        J[0]->subtract(K[0]);
+        J[0]->add(matrices_["H"]);
+        
+        if(has_fzc_) J[0]->add(matrices_["FZC_JK_AO"]);
     }
-    matrices_["IFock"] = Matrix::triplet(matrices_["C"], J[0], matrices_["C"], true, false, false);
-    matrices_["IFock"]->set_name("IFock");
+    if(not user_pass_ifock)
+    {
+        matrices_["IFock"] = Matrix::triplet(matrices_["C"], J[0], matrices_["C"], true, false, false);
+    }
+    else {
+        if(has_fzc_) matrices_["IFock_AO"]->add(matrices_["FZC_JK_AO"]);
+        matrices_["IFock"] = Matrix::triplet(matrices_["C"], matrices_["IFock_AO"], matrices_["C"], true, false, false);
+    }
     outfile->Printf("\n Computing ^IF takes %8.4f s.", Build_IFock.get());
 
     // AFock build
     Timer Build_AFock;
-    K[1]->scale(0.5);
-    J[1]->subtract(K[1]);
-    matrices_["AFock"] = Matrix::triplet(matrices_["C"], J[1], matrices_["C"], true, false, false);
-    matrices_["AFock"]->set_name("AFock");
+    if(not user_pass_ifock)
+    {
+        K[1]->scale(0.5);
+        J[1]->subtract(K[1]);
+        matrices_["AFock"] = Matrix::triplet(matrices_["C"], J[1], matrices_["C"], true, false, false);
+        matrices_["AFock"]->set_name("AFock");
+    }
+    else {
+        // Since IFock was passed to SOMCSCF, only one Fock build was done
+        K[0]->scale(0.5);
+        J[0]->subtract(K[0]);
+        matrices_["AFock"] = Matrix::triplet(matrices_["C"], J[0], matrices_["C"], true, false, false);
+        matrices_["AFock"]->set_name("AFock");
+    }
     outfile->Printf("\n Computing ^AF takes %8.4f s.", Build_AFock.get());
 
     Timer Compute_Q_Time;

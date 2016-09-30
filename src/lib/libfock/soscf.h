@@ -85,7 +85,11 @@ public:
      * @param Cfzc The frozen core orbitals
      */
     void set_frozen_orbitals(SharedMatrix Cfzc);
-
+    /**
+     * Sets the inactive fock, these orbitals do not rotate.
+     * @param IFock_AO The IF operator in AO basis
+     */
+    void set_inactive_fock(SharedMatrix IFock_AO);
     /**
      * Rotate the current orbitals for a given rotation matrix.
      * @param  C The orbital matrix to rotate.
