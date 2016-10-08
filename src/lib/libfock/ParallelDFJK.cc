@@ -9,6 +9,7 @@
 #include <ga.h>
 #include <macdecls.h>
 #include <mpi.h>
+#include <ctf.hpp>
 namespace psi {
 
 ParallelDFJK::ParallelDFJK(boost::shared_ptr<BasisSet> primary, boost::shared_ptr<BasisSet> auxiliary) : JK(primary), auxiliary_(auxiliary)
@@ -22,6 +23,7 @@ void ParallelDFJK::common_init()
 {
     outfile->Printf("\n ParallelDFJK");
     memory_ = Process::environment.get_memory();
+    
 }
 void ParallelDFJK::preiterations()
 {
@@ -141,6 +143,7 @@ void ParallelDFJK::J_one_half()
 }
 void ParallelDFJK::compute_qmn()
 {
+    CTF::World dw(MPI_COMM_WORLD);
     // > Sizing < //
 
     size_t nso = primary_->nbf();
@@ -275,6 +278,12 @@ void ParallelDFJK::compute_qmn()
     ///shell_start represents the start of shells for this processor
     ///shell_end represents the end of shells for this processor
     ///NOTE:  This code will have terrible load balance (shells do not correspond to equal number of functions
+    CTF::Matrix<double> Auv_ctf(max_rows, nso * nso,dw);
+    CTF::Matrix<double> Quv_ctf(max_rows, nso * nso,dw);
+    CTF::Matrix<double> J_12_ctf(max_rows, max_rows,  dw);
+    int64_t * indices;
+    int64_t size;
+    double* values;
     Timer compute_Auv;
     {
         //boost::shared_ptr<Matrix> Auv(new Matrix("(Q|mn)", 8 * max_rows, nso * (unsigned long int) nso));
@@ -332,6 +341,49 @@ void ParallelDFJK::compute_qmn()
             }}}
 
         }
+
+        CTF::Matrix<double> Auv_slice(max_rows, nso * nso, dw);
+        //int off_q[2] = {function_start, function_start};
+        //int end_q[2] = {function_end, function_end};
+        //int off_nm[2] = {0, 0};
+        //int end_nm[2] = {nso * nso, nso * nso};
+        //int begin_q[2] = [
+        //Auv_ctf.read_local(&size, &indices, &values);
+        printf("\n P%d size: %d ", GA_Nodeid(), size);
+        for(int64_t index = 0; index < size; index++){
+        //    printf("\nP%d indices[%d]: %d =  %8.8f", GA_Nodeid(),index, indices[index], values);
+            printf("\n P%d size: %d", GA_Nodeid(), size);
+        }
+            
+        //MPI_Barrier(MPI_COMM_WORLD);
+        //exit(1);
+        //std::vector<double> local_values(max_rows * nso * nso);
+        //for(int q = 0; q < max_rows; q++)
+        //    for(int u = 0; u < nso; u++)
+        //        for(int v = 0; v < nso; v++){
+        //           values[u * nso *max_rows  + v * max_rows + q] = Auv[q * nso * nso + u * nso + v];
+        //        }
+
+        int64_t local_size = max_rows * nso * nso;
+        //std::vector<size_t> local_index(max_rows * nso * nso);
+        //std::vector<double> local_values(max_rows * nso * nso);
+        int64_t * local_index = new int64_t[local_size];
+        double * local_values = new double[local_size];
+        printf("\n Auv local: local_size: %d", local_size);
+        for(int q = function_start; q < function_end; q++)
+            for(int u = 0; u < nso; u++)
+                for(int v = 0; v < nso; v++)
+                {
+                    size_t local_offset = u * nso * (max_rows) + v * (max_rows) + (q); 
+                    local_index[local_offset] = u * nso * naux + v * naux + q + function_start;
+                    local_values[local_offset] = Auv[(q - function_start) * nso * nso + u * nso + v];
+                    //local_values[local_offset] = 0.0;
+                }
+
+        
+        Auv_ctf.write(local_size, local_index, local_values);
+        delete[] local_index;
+        delete[] local_values;
         if(profile_) printf("\n P%d Computing integrals takes %8.4f s.", GA_Nodeid(), compute_integrals_raw.get());
         //NGA_Distribution(A_UV_GA, GA_Nodeid(), Auv_begin, Auv_end);
         //int ld = nso * nso;
@@ -343,16 +395,49 @@ void ParallelDFJK::compute_qmn()
 
     Timer J_one_half_time;
     J_one_half();
+    int begin_offset[2];
+    int end_offset[2];
+    begin_offset[0] = 0;
+    begin_offset[1] = 0;
+    end_offset[0] = auxiliary_->nbf() - 1;
+    end_offset[1] = auxiliary_->nbf() - 1;
+    std::vector<double> j_12_buf(max_rows * max_rows);
+    int stride = max_rows;
+    NGA_Get(J_12_GA_, begin_offset, end_offset, &j_12_buf[0], &stride);
     if(profile_) printf("\n  P%d J^({-1/2}} took %8.6f s.", GA_Nodeid(), J_one_half_time.get());
+    J_12_ctf.read_local(&size, &indices, &values);
+    for(int q = 0; q < max_rows * max_rows; q++)
+        values[q] = j_12_buf[q];
+    J_12_ctf.write(size, indices, values);
+    free(indices);
+    free(values);
 
     Timer GA_DGEMM;
     GA_Dgemm('N', 'N', naux, nso * nso, naux, 1.0, J_12_GA_, A_UV_GA, 0.0, Q_UV_GA_);
+    //GA_Print(J_12_GA_);
+    //J_12_ctf.print();
+
+    Quv_ctf["Quv"] += J_12_ctf["QA"] * Auv_ctf["Auv"];
+    Quv_ctf.read_local(&size, &indices, &values);
+    //Auv_ctf.print();
+    Quv_ctf.print();
+    GA_Print(Q_UV_GA_);
     //DF_Dgemm(J_12_GA_, A_UV_GA, Q_UV_GA_);
     if(profile_) printf("\n  P%d DGEMM took %8.6f s.", GA_Nodeid(), GA_DGEMM.get());
     outfile->Printf("\n GA_Dgemm takes %8.4f s.", GA_DGEMM.get());
     local_quv_.resize(max_rows * nso * nso);
     Timer get_local_quv;
     get_or_put_ga_batches(Q_UV_GA_, local_quv_, true);
+    for(int q = 0; q < max_rows; q++)
+        for(int u = 0; u < nso; u++)
+            for(int v = 0; v < nso; v++)
+    {
+        //outfile->Printf("\n local_quv_: %8.8f values: %8.8f", local_quv_[i], values[i]);
+        local_quv_[q * nso * nso + u * nso + v] = values[u * nso * max_rows + v * max_rows + q];
+    }
+    free(values);
+    free(indices);
+
     if(profile_) printf("\n P%d Get local_quv_ take %8.4f s.", GA_Nodeid(), get_local_quv.get());
     outfile->Printf("\n Get local_quv takes %8.4f s.", get_local_quv.get());
 
@@ -449,6 +534,11 @@ void ParallelDFJK::compute_K()
         SharedMatrix BQ_vi(new Matrix("B^Q_{vi}", local_naux * nbf, nocc));
         SharedMatrix Bm_Qi(new Matrix("B^m_{Qi}", nbf, local_naux * nocc));
         SharedMatrix Bn_Qi(new Matrix("B^n_{Qi}", nbf, local_naux * nocc));
+        int count = 0;
+        for(int mu = 0; mu < nbf; mu++)
+            for(int occ = 0; occ < nocc; occ++)
+                if(C_left_ao_[N]->get(mu, occ) > 1e-6) count++;
+        //outfile->Printf("\n Absolute sparsity: %d / %d Percentage sparsity (%8.4f )", count, nbf * nocc, count / (nbf * nocc));
 
         if(not nocc) continue; ///If no occupied orbitals skip exchange
 
