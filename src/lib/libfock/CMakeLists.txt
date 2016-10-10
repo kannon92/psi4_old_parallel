@@ -36,6 +36,8 @@ set_property(GLOBAL APPEND PROPERTY LIBLIST fock)
 if(BUILD_CUSTOM_BOOST)
    add_dependencies(fock custom_boost)
 endif()
+include_directories(${CTF_INC})
+target_link_libraries(fock ${CTF_LIB}/libctf.a)
 
 # Sets install directory for all the headers in the list
 install_list_FILES("${headers_list}" include/psi4/lib/libfock)
