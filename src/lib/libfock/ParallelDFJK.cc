@@ -278,9 +278,9 @@ void ParallelDFJK::compute_qmn()
     ///shell_start represents the start of shells for this processor
     ///shell_end represents the end of shells for this processor
     ///NOTE:  This code will have terrible load balance (shells do not correspond to equal number of functions
-    CTF::Matrix<double> Auv_ctf(max_rows, nso * nso,dw);
-    CTF::Matrix<double> Quv_ctf(max_rows, nso * nso,dw);
-    CTF::Matrix<double> J_12_ctf(max_rows, max_rows,  dw);
+    CTF::Matrix<double> Auv_ctf(naux, nso * nso,dw);
+    CTF::Matrix<double> Quv_ctf(naux, nso * nso,dw);
+    CTF::Matrix<double> J_12_ctf(naux, max_rows,  dw);
     int64_t * indices;
     int64_t size;
     double* values;
@@ -342,28 +342,12 @@ void ParallelDFJK::compute_qmn()
 
         }
 
-        CTF::Matrix<double> Auv_slice(max_rows, nso * nso, dw);
-        //int off_q[2] = {function_start, function_start};
-        //int end_q[2] = {function_end, function_end};
-        //int off_nm[2] = {0, 0};
-        //int end_nm[2] = {nso * nso, nso * nso};
-        //int begin_q[2] = [
-        //Auv_ctf.read_local(&size, &indices, &values);
         printf("\n P%d size: %d ", GA_Nodeid(), size);
         for(int64_t index = 0; index < size; index++){
         //    printf("\nP%d indices[%d]: %d =  %8.8f", GA_Nodeid(),index, indices[index], values);
             printf("\n P%d size: %d", GA_Nodeid(), size);
         }
             
-        //MPI_Barrier(MPI_COMM_WORLD);
-        //exit(1);
-        //std::vector<double> local_values(max_rows * nso * nso);
-        //for(int q = 0; q < max_rows; q++)
-        //    for(int u = 0; u < nso; u++)
-        //        for(int v = 0; v < nso; v++){
-        //           values[u * nso *max_rows  + v * max_rows + q] = Auv[q * nso * nso + u * nso + v];
-        //        }
-
         int64_t local_size = max_rows * nso * nso;
         //std::vector<size_t> local_index(max_rows * nso * nso);
         //std::vector<double> local_values(max_rows * nso * nso);
