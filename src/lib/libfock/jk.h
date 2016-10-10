@@ -31,6 +31,7 @@
 #include <vector>
 #include <boost/shared_ptr.hpp>
 #include <libmints/typedefs.h>
+#include <ctf.hpp>
 
 namespace psi {
 class MinimalInterface;
@@ -984,6 +985,8 @@ class ParallelDFJK : public JK {
         ///(Q|UV) tensor created in initialization of JK
         int Q_UV_GA_  = 0;
         std::vector<double> local_quv_;
+        //CTF::Tensor<double>* Quv_ctf_;
+        //CTF::World CTF_COMM_;
 
         void preiterations();
         virtual void postiterations();
@@ -994,6 +997,9 @@ class ParallelDFJK : public JK {
         void compute_JK();
         void compute_J();
         void compute_K();
+        void compute_K_sparse();
+        /// Function for reading C matrices
+        void Fill_C_Matrices(int64_t C_size, double* C_values, SharedMatrix Actual_C);
         /// Wrapper functions to perform a batched get/put over block_size (GA uses ints internally)
         /// ga_get tells whether to call NGA_Get or NGA_Put (if true, call NGA_Get)
         void get_or_put_ga_batches(int MY_GA, std::vector<double>& ga_buf, bool ga_get);

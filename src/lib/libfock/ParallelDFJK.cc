@@ -23,6 +23,7 @@ void ParallelDFJK::common_init()
 {
     outfile->Printf("\n ParallelDFJK");
     memory_ = Process::environment.get_memory();
+    //(MPI_COMM_WORLD);
     
 }
 void ParallelDFJK::preiterations()
@@ -48,7 +49,10 @@ void ParallelDFJK::compute_JK()
     {
         Timer compute_local_K;
         compute_K();
-        outfile->Printf("\n computing K takes %8.5f s.", compute_local_K.get());
+        outfile->Printf("\n computing K Dense takes %8.5f s.", compute_local_K.get());
+        Timer compute_K_sparse_time;
+        compute_K_sparse();
+        outfile->Printf("\n computing K Sparse takes %8.5f s.", compute_K_sparse_time.get());
     }
 }
 void ParallelDFJK::J_one_half()
@@ -278,9 +282,14 @@ void ParallelDFJK::compute_qmn()
     ///shell_start represents the start of shells for this processor
     ///shell_end represents the end of shells for this processor
     ///NOTE:  This code will have terrible load balance (shells do not correspond to equal number of functions
-    CTF::Matrix<double> Auv_ctf(naux, nso * nso,dw);
-    CTF::Matrix<double> Quv_ctf(naux, nso * nso,dw);
-    CTF::Matrix<double> J_12_ctf(naux, max_rows,  dw);
+    //CTF::Matrix<double> Auv_ctf(naux, nso * nso,dw);
+    //CTF::Matrix<double> Quv_ctf(naux, nso * nso,dw);
+    //CTF::Matrix<double> J_12_ctf(naux, naux,  dw);
+    int auv_edge[3] = {naux, nso, nso};
+    int j12_edge[2] = {naux, naux};
+    CTF::Tensor<double> Auv_ctf(3, true, auv_edge, dw);
+    CTF::Tensor<double> Quv_ctf_(3, true, auv_edge, dw);
+    CTF::Tensor<double> J_12_ctf(2, true,j12_edge, dw);
     int64_t * indices;
     int64_t size;
     double* values;
@@ -342,15 +351,13 @@ void ParallelDFJK::compute_qmn()
 
         }
 
-        printf("\n P%d size: %d ", GA_Nodeid(), size);
-        for(int64_t index = 0; index < size; index++){
-        //    printf("\nP%d indices[%d]: %d =  %8.8f", GA_Nodeid(),index, indices[index], values);
-            printf("\n P%d size: %d", GA_Nodeid(), size);
-        }
+        //printf("\n P%d size: %d ", GA_Nodeid(), size);
+        //for(int64_t index = 0; index < size; index++){
+        ////    printf("\nP%d indices[%d]: %d =  %8.8f", GA_Nodeid(),index, indices[index], values);
+        //    printf("\n P%d size: %d", GA_Nodeid(), size);
+        //}
             
         int64_t local_size = max_rows * nso * nso;
-        //std::vector<size_t> local_index(max_rows * nso * nso);
-        //std::vector<double> local_values(max_rows * nso * nso);
         int64_t * local_index = new int64_t[local_size];
         double * local_values = new double[local_size];
         printf("\n Auv local: local_size: %d", local_size);
@@ -362,9 +369,23 @@ void ParallelDFJK::compute_qmn()
                     local_index[local_offset] = u * nso * naux + v * naux + q + function_start;
                     local_values[local_offset] = Auv[(q - function_start) * nso * nso + u * nso + v];
                     //local_values[local_offset] = 0.0;
+                    printf("\n P%d local_index[%d] = %d local_values[%d] = %8.10f", GA_Nodeid(),local_offset, local_index[local_offset], local_offset, local_values[local_offset]);
                 }
+        int64_t   ctf_local_size;
+        int64_t*  ctf_local_index;
+        double*   ctf_local_values;
 
-        
+        Auv_ctf.read_local(&ctf_local_size, &ctf_local_index, &ctf_local_values);
+        for(size_t me = 0; me < ctf_local_size; me++){
+            size_t ctf_local = ctf_local_index[me];
+            size_t d1 = ctf_local % nso;
+            size_t d2 = ctf_local % (nso * nso);
+            size_t d3 = ctf_local % (nso * nso * naux);
+            size_t my_offset = d1 + naux * d2 + nso * naux * d3;
+            printf("\n P%d ctf_local_index[%d] = %d ctf_my_offset: %d", GA_Nodeid(),me, ctf_local_index[me], my_offset);
+
+        }
+
         Auv_ctf.write(local_size, local_index, local_values);
         delete[] local_index;
         delete[] local_values;
@@ -401,11 +422,10 @@ void ParallelDFJK::compute_qmn()
     //GA_Print(J_12_GA_);
     //J_12_ctf.print();
 
-    Quv_ctf["Quv"] += J_12_ctf["QA"] * Auv_ctf["Auv"];
-    Quv_ctf.read_local(&size, &indices, &values);
-    //Auv_ctf.print();
-    Quv_ctf.print();
-    GA_Print(Q_UV_GA_);
+    Quv_ctf_["Quv"] += J_12_ctf["QA"] * Auv_ctf["Auv"];
+    Quv_ctf_.read_local(&size, &indices, &values);
+    //Quv_ctf_.print();
+    //GA_Print(Q_UV_GA_);
     //DF_Dgemm(J_12_GA_, A_UV_GA, Q_UV_GA_);
     if(profile_) printf("\n  P%d DGEMM took %8.6f s.", GA_Nodeid(), GA_DGEMM.get());
     outfile->Printf("\n GA_Dgemm takes %8.4f s.", GA_DGEMM.get());
@@ -580,6 +600,105 @@ void ParallelDFJK::compute_K()
     }
     printf("\n P%d for Compute K with %d densities %8.4f s", GA_Nodeid(), D_ao_.size(), Compute_K_all.get());
 }
+void ParallelDFJK::compute_K_sparse()
+{
+    /// K_{uv} = D_{pq} B^{Q}_{up} * B^{Q}_{vq}
+    /// KPH wants to use Cyclops to perform a sparse tensor contraction
+    /// 
+    /// Step 1:  Use def of D = \sum_{i} C_{pi}C_{qi}
+    /// Step 2:  Perform a one index transform  (N^4) Use of C_pi should be sparse
+    ///          B^{Q}_{ui} = C_{pi} B^{Q}_{up}
+    ///          B^{Q}_{vi} = C_{qi} B^{Q}_{vq}
+    /// Step 3:  Compute K_{uv} = \sum_{Q} \sum_{i} B^{Q}_{ui} B^{Q}_{vi}
+    
+    /// The first iteration of this job will assume that B tensor is distributed 
+    /// via the Q index.
+    /// This means that all of these steps will be performed locally for every process
+    /// Only communciation required will be an Allreduce once the K matrix is formed
+    /// GA is used, but we will only perform local MM (so we use data on each processor only)
+    
+    /// Can have multiple exchange matrices
+    /// GA Specific information
+    CTF::World dw(MPI_COMM_WORLD);
+    size_t K_size = K_ao_.size();
+    Timer Compute_K_all;
+    int naux = auxiliary_->nbf();
+    int nbf  = primary_->nbf();
+    int64_t quv_ctf_size;
+    int64_t* quv_index;
+    double* quv_ctf_values;
+    int aux_edge[3] = {naux, nbf, nbf};
+    CTF::Tensor<double> Quv_ctf(3, true, aux_edge, dw);
+    Quv_ctf.read_local(&quv_ctf_size, &quv_index,&quv_ctf_values);
+    int nso = nbf;
+    for(int q = 0; q < naux; q++)
+        for(int u = 0; u < nbf; u++)
+            for(int v = 0; v < nbf; v++)
+    {
+        //outfile->Printf("\n local_quv_: %8.8f values: %8.8f", local_quv_[i], values[i]);
+        quv_ctf_values[u * nso * naux + v * naux + q] = local_quv_[q * nso * nso + u * nso + v];
+    }
+    Quv_ctf.write(quv_ctf_size, quv_index, quv_ctf_values);
+
+    for(size_t N = 0; N < K_size; N++)
+    {   
+        int nocc = C_right_ao_[N]->colspi()[0];
+        if(not nocc) continue; ///If no occupied orbitals skip exchange
+        int q_ui_size[3] = {naux, nbf, nocc};
+        int Cui_size[2]  = {nbf, nocc};
+        int K_size[2]    = {nbf, nbf};
+        int sym_2[2]     = {NS, NS};
+        int sym_3[3]     = {NS, NS, NS};
+        
+        CTF::Tensor<double> Q_ui(3, false, q_ui_size, sym_3);
+        CTF::Tensor<double> Q_uj(3, false, q_ui_size, sym_3);
+        CTF::Tensor<double> C_right(2, false, Cui_size, sym_2);
+        CTF::Tensor<double> C_left(2, false, Cui_size, sym_2);
+        CTF::Tensor<double> K(2, false, K_size, sym_2);
+        int64_t C_left_size;
+        double* C_left_values;
+        int64_t C_right_size;
+        double* C_right_values;
+        int64_t* C_index = new int64_t[nbf * nocc];
+
+        for(int mu = 0; mu < nbf; mu++)
+            for(int occ = 0; occ < nocc; occ++)
+                C_index[occ * nbf + mu] = occ * nbf + mu;
+        C_left.read_all(&C_left_size, &C_left_values);
+        C_right.read_all(&C_right_size, &C_right_values);
+        SharedMatrix C_left_matrix(new Matrix("C_left", nbf, nocc));
+        SharedMatrix C_right_matrix(new Matrix("C_left", nbf, nocc));
+        C_left_matrix = C_left_ao_[N];
+        C_right_matrix = C_right_ao_[N];
+        Fill_C_Matrices(C_left_size, C_left_values, C_left_matrix);
+        Fill_C_Matrices(C_right_size, C_right_values, C_right_matrix);
+        C_left.write(C_left_size, C_index,C_left_values);
+        C_right.write(C_right_size, C_index,C_right_values);
+        C_left.sparsify(1e-10);
+        C_right.sparsify(1e-10);
+        Quv_ctf.sparsify(1e-10);
+
+        //fill_c_matrices_ctf(C_right)
+        //Quv_ctf.print();
+        //C_right.print();
+        C_right.print(stdout, 1e-64);
+        C_right_matrix->print();
+        Q_ui["Qui"] += Quv_ctf["Quv"] * C_right["vi"];
+        Q_uj["Quj"] += Quv_ctf["Quv"] * C_left["vj"];
+        K["uv"] = Q_ui["Qui"] * Q_uj["Qvi"];
+        int64_t k_size;
+        double* k_values;
+        
+        K.read_all(&k_size, &k_values);
+        for(int mu = 0; mu < nbf; mu++)
+            for(int nu = 0; nu < nbf; nu++)
+                K_ao_[N]->set(mu, nu, k_values[mu * nbf + nu]);
+        free(k_values);
+        delete[] C_index;
+    }
+    printf("\n P%d for Compute K with %d densities %8.4f s", GA_Nodeid(), D_ao_.size(), Compute_K_all.get());
+}
+
 void ParallelDFJK::postiterations()
 {
 }
@@ -625,36 +744,43 @@ void ParallelDFJK::get_or_put_ga_batches(int MY_GA, std::vector<double>& ga_buf,
     //    ga_buf_norm += value * value;
     //printf("\n Norm in get_ga: %8.8f", sqrt(ga_buf_norm));
 }
-void ParallelDFJK::DF_Dgemm(int GA_left, int GA_right, int GA_final)
+//void ParallelDFJK::DF_Dgemm(int GA_left, int GA_right, int GA_final)
+//{
+//    if(GA_Nnodes() == 0)
+//    {
+//        size_t naux = auxiliary_->nbf();
+//        size_t nso2 = primary_->nbf() * primary_->nbf();
+//
+//        int begin_j[2];
+//        int end_j[2];
+//        int begin_qmn[2];
+//        int end_qmn[2];
+//
+//        NGA_Distribution(GA_left, 0, begin_j, end_j);
+//        std::vector<double> j_buf(end_j[0] - begin_j[0] + 1, 0.0);
+//        get_or_put_ga_batches(GA_left, j_buf, true);
+//
+//        NGA_Distribution(GA_right, 0, begin_qmn, end_qmn);
+//        std::vector<double> qmn_buf(nso2 * naux, 0.0);
+//        std::vector<double> final_buf(qmn_buf);
+//        get_or_put_ga_batches(GA_right, qmn_buf, true);
+//
+//        C_DGEMM('N', 'N', naux, nso2, naux, 1.0, &j_buf[0], naux, &qmn_buf[0], nso2, 0.0, &final_buf[0], nso2);
+//
+//        get_or_put_ga_batches(GA_final, final_buf, false);
+//
+//    }
+//    else {
+//        int naux = auxiliary_->nbf();
+//        int nso = primary_->nbf();
+//        GA_Dgemm('N', 'N', naux, nso * nso, naux, 1.0, GA_left, GA_right, 0.0, GA_final);
+//    }
+//}
+void ParallelDFJK::Fill_C_Matrices(int64_t C_size, double* C_data, SharedMatrix C_matrix)
 {
-    if(GA_Nnodes() == 0)
-    {
-        size_t naux = auxiliary_->nbf();
-        size_t nso2 = primary_->nbf() * primary_->nbf();
-
-        int begin_j[2];
-        int end_j[2];
-        int begin_qmn[2];
-        int end_qmn[2];
-
-        NGA_Distribution(GA_left, 0, begin_j, end_j);
-        std::vector<double> j_buf(end_j[0] - begin_j[0] + 1, 0.0);
-        get_or_put_ga_batches(GA_left, j_buf, true);
-
-        NGA_Distribution(GA_right, 0, begin_qmn, end_qmn);
-        std::vector<double> qmn_buf(nso2 * naux, 0.0);
-        std::vector<double> final_buf(qmn_buf);
-        get_or_put_ga_batches(GA_right, qmn_buf, true);
-
-        C_DGEMM('N', 'N', naux, nso2, naux, 1.0, &j_buf[0], naux, &qmn_buf[0], nso2, 0.0, &final_buf[0], nso2);
-
-        get_or_put_ga_batches(GA_final, final_buf, false);
-
-    }
-    else {
-        int naux = auxiliary_->nbf();
-        int nso = primary_->nbf();
-        GA_Dgemm('N', 'N', naux, nso * nso, naux, 1.0, GA_left, GA_right, 0.0, GA_final);
-    }
+    for(int bf = 0; bf < primary_->nbf(); bf++)
+        for(int occ = 0; occ < C_matrix->colspi()[0]; occ++){
+            C_data[occ * primary_->nbf() + bf] = C_matrix->get(bf, occ);
+        }
 }
 }
