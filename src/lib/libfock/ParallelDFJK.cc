@@ -287,16 +287,20 @@ void ParallelDFJK::compute_qmn()
     //CTF::Matrix<double> J_12_ctf(naux, naux,  dw);
     int auv_edge[3] = {naux, nso, nso};
     int j12_edge[2] = {naux, naux};
-    CTF::Tensor<double> Auv_ctf(3, true, auv_edge, dw);
-    CTF::Tensor<double> Quv_ctf_(3, true, auv_edge, dw);
-    CTF::Tensor<double> J_12_ctf(2, true,j12_edge, dw);
-    int64_t * indices;
+    CTF::Tensor<double> Auv_ctf(3, false, auv_edge, dw);
+    CTF::Tensor<double> Quv_ctf_(3, false, auv_edge, dw);
+    CTF::Tensor<double> J_12_ctf(2, false,j12_edge, dw);
+    int64_t local_size = max_rows * nso * nso;
+    int64_t * local_index = new int64_t[local_size];
+    double * local_values = new double[local_size];
     int64_t size;
-    double* values;
+    int64_t * indices;
+    double  * values;
+
     Timer compute_Auv;
     {
-        //boost::shared_ptr<Matrix> Auv(new Matrix("(Q|mn)", 8 * max_rows, nso * (unsigned long int) nso));
         std::vector<double> Auv(max_rows * nso * nso, 0.0);
+        //boost::shared_ptr<Matrix> Auv(new Matrix("(Q|mn)", 8 * max_rows, nso * (unsigned long int) nso));
         //double** Auvp = Auv->pointer();
 
         int Pstart = shell_start;
@@ -357,38 +361,35 @@ void ParallelDFJK::compute_qmn()
         //    printf("\n P%d size: %d", GA_Nodeid(), size);
         //}
             
-        int64_t local_size = max_rows * nso * nso;
-        int64_t * local_index = new int64_t[local_size];
-        double * local_values = new double[local_size];
         printf("\n Auv local: local_size: %d", local_size);
         for(int q = function_start; q < function_end; q++)
             for(int u = 0; u < nso; u++)
                 for(int v = 0; v < nso; v++)
                 {
-                    size_t local_offset = u * nso * (max_rows) + v * (max_rows) + (q); 
+                    size_t local_offset = u * nso * (max_rows) + v * (max_rows) + (q - function_start); 
                     local_index[local_offset] = u * nso * naux + v * naux + q + function_start;
                     local_values[local_offset] = Auv[(q - function_start) * nso * nso + u * nso + v];
                     //local_values[local_offset] = 0.0;
-                    printf("\n P%d local_index[%d] = %d local_values[%d] = %8.10f", GA_Nodeid(),local_offset, local_index[local_offset], local_offset, local_values[local_offset]);
+        //            printf("\n P%d local_index[%d] = %d local_values[%d] = %8.10f", GA_Nodeid(),local_offset, local_index[local_offset], local_offset, local_values[local_offset]);
+         //           printf("\n P%d u: %d v: %d naux: %d", GA_Nodeid(), u, v, q + function_start);
                 }
-        int64_t   ctf_local_size;
-        int64_t*  ctf_local_index;
-        double*   ctf_local_values;
+        //int64_t   ctf_local_size;
+        //int64_t*  ctf_local_index;
+        //double*   ctf_local_values;
 
-        Auv_ctf.read_local(&ctf_local_size, &ctf_local_index, &ctf_local_values);
-        for(size_t me = 0; me < ctf_local_size; me++){
-            size_t ctf_local = ctf_local_index[me];
-            size_t d1 = ctf_local % nso;
-            size_t d2 = ctf_local % (nso * nso);
-            size_t d3 = ctf_local % (nso * nso * naux);
-            size_t my_offset = d1 + naux * d2 + nso * naux * d3;
-            printf("\n P%d ctf_local_index[%d] = %d ctf_my_offset: %d", GA_Nodeid(),me, ctf_local_index[me], my_offset);
+        //Auv_ctf.read_local(&ctf_local_size, &ctf_local_index, &ctf_local_values);
+        //for(size_t me = 0; me < ctf_local_size; me++){
+        //    size_t ctf_local = ctf_local_index[me];
+        //    size_t d1 = ctf_local % naux;
+        //    size_t d2 = (ctf_local / naux) % nso;
+        //    size_t d3 = (ctf_local / (nso * naux)) % (nso * naux);
+        //    size_t my_offset = d1 + d2 * naux + d3 * naux * nso;
+        //    printf("\n P%d ctf_local_index[%d] = %d ctf_my_offset: %d", GA_Nodeid(),me, ctf_local_index[me], my_offset);
+        //    printf("\n P%d d1(Q): %d d2(v): %d d3(u): %d", GA_Nodeid(), d1, d2, d3);
 
-        }
+        //}
 
         Auv_ctf.write(local_size, local_index, local_values);
-        delete[] local_index;
-        delete[] local_values;
         if(profile_) printf("\n P%d Computing integrals takes %8.4f s.", GA_Nodeid(), compute_integrals_raw.get());
         //NGA_Distribution(A_UV_GA, GA_Nodeid(), Auv_begin, Auv_end);
         //int ld = nso * nso;
@@ -406,12 +407,12 @@ void ParallelDFJK::compute_qmn()
     begin_offset[1] = 0;
     end_offset[0] = auxiliary_->nbf() - 1;
     end_offset[1] = auxiliary_->nbf() - 1;
-    std::vector<double> j_12_buf(max_rows * max_rows);
-    int stride = max_rows;
+    std::vector<double> j_12_buf(naux * naux);
+    int stride = naux;
     NGA_Get(J_12_GA_, begin_offset, end_offset, &j_12_buf[0], &stride);
     if(profile_) printf("\n  P%d J^({-1/2}} took %8.6f s.", GA_Nodeid(), J_one_half_time.get());
-    J_12_ctf.read_local(&size, &indices, &values);
-    for(int q = 0; q < max_rows * max_rows; q++)
+    J_12_ctf.read_local(&size,&indices, &values);
+    for(int q = 0; q < naux * naux; q++)
         values[q] = j_12_buf[q];
     J_12_ctf.write(size, indices, values);
     free(indices);
@@ -422,25 +423,29 @@ void ParallelDFJK::compute_qmn()
     //GA_Print(J_12_GA_);
     //J_12_ctf.print();
 
-    Quv_ctf_["Quv"] += J_12_ctf["QA"] * Auv_ctf["Auv"];
+    Quv_ctf_["Quv"] = J_12_ctf["QA"] * Auv_ctf["Auv"];
+
+    double * a_values = new double[local_size];
+    Quv_ctf_.read(local_size, local_index, a_values);
     Quv_ctf_.read_local(&size, &indices, &values);
-    //Quv_ctf_.print();
-    //GA_Print(Q_UV_GA_);
-    //DF_Dgemm(J_12_GA_, A_UV_GA, Q_UV_GA_);
     if(profile_) printf("\n  P%d DGEMM took %8.6f s.", GA_Nodeid(), GA_DGEMM.get());
-    outfile->Printf("\n GA_Dgemm takes %8.4f s.", GA_DGEMM.get());
+    if(profile_) outfile->Printf("\n GA_Dgemm takes %8.4f s.", GA_DGEMM.get());
     local_quv_.resize(max_rows * nso * nso);
     Timer get_local_quv;
-    get_or_put_ga_batches(Q_UV_GA_, local_quv_, true);
+    //get_or_put_ga_batches(Q_UV_GA_, local_quv_, true);
     for(int q = 0; q < max_rows; q++)
         for(int u = 0; u < nso; u++)
             for(int v = 0; v < nso; v++)
     {
         //outfile->Printf("\n local_quv_: %8.8f values: %8.8f", local_quv_[i], values[i]);
-        local_quv_[q * nso * nso + u * nso + v] = values[u * nso * max_rows + v * max_rows + q];
+        //outfile->Printf("\n local_values: %8.8f values: %8.8f indices: %d global_index: %d", local_values[u * nso * max_rows + v * max_rows + q], values[u * nso * max_rows + v * max_rows + q], indices[u * nso * max_rows + v * max_rows + q], local_index[u * nso * max_rows + v * max_rows + q]);
+        local_quv_[q * nso * nso + u * nso + v] = a_values[u * nso * max_rows + v * max_rows + q];
     }
     free(values);
     free(indices);
+    delete[] local_index;
+    delete[] local_values;
+    delete[] a_values;
 
     if(profile_) printf("\n P%d Get local_quv_ take %8.4f s.", GA_Nodeid(), get_local_quv.get());
     outfile->Printf("\n Get local_quv takes %8.4f s.", get_local_quv.get());
