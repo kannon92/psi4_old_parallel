@@ -50,9 +50,9 @@ void ParallelDFJK::compute_JK()
         Timer compute_local_K;
         compute_K();
         outfile->Printf("\n computing K Dense takes %8.5f s.", compute_local_K.get());
-        Timer compute_K_sparse_time;
-        compute_K_sparse();
-        outfile->Printf("\n computing K Sparse takes %8.5f s.", compute_K_sparse_time.get());
+        //Timer compute_K_sparse_time;
+        //compute_K_sparse();
+        //outfile->Printf("\n computing K Sparse takes %8.5f s.", compute_K_sparse_time.get());
     }
 }
 void ParallelDFJK::J_one_half()
@@ -293,9 +293,9 @@ void ParallelDFJK::compute_qmn()
     int64_t local_size = max_rows * nso * nso;
     int64_t * local_index = new int64_t[local_size];
     double * local_values = new double[local_size];
-    int64_t size;
-    int64_t * indices;
-    double  * values;
+    //int64_t size;
+    //int64_t * indices;
+    //double  * values;
 
     Timer compute_Auv;
     {
@@ -362,15 +362,15 @@ void ParallelDFJK::compute_qmn()
         //}
             
         printf("\n Auv local: local_size: %d", local_size);
-        for(int q = function_start; q < function_end; q++)
+        for(int q = 0; q < max_rows; q++)
             for(int u = 0; u < nso; u++)
                 for(int v = 0; v < nso; v++)
                 {
-                    size_t local_offset = u * nso * (max_rows) + v * (max_rows) + (q - function_start); 
+                    size_t local_offset = u * nso * (max_rows) + v * (max_rows) + q; 
                     local_index[local_offset] = u * nso * naux + v * naux + q + function_start;
-                    local_values[local_offset] = Auv[(q - function_start) * nso * nso + u * nso + v];
+                    local_values[local_offset] = Auv[q * nso * nso + u * nso + v];
                     //local_values[local_offset] = 0.0;
-        //            printf("\n P%d local_index[%d] = %d local_values[%d] = %8.10f", GA_Nodeid(),local_offset, local_index[local_offset], local_offset, local_values[local_offset]);
+                    printf("\n P%d local_index[%d] = %d local_values[%d] = %8.10f", GA_Nodeid(),local_offset, local_index[local_offset], local_offset, local_values[local_offset]);
          //           printf("\n P%d u: %d v: %d naux: %d", GA_Nodeid(), u, v, q + function_start);
                 }
         //int64_t   ctf_local_size;
@@ -388,6 +388,8 @@ void ParallelDFJK::compute_qmn()
         //    printf("\n P%d d1(Q): %d d2(v): %d d3(u): %d", GA_Nodeid(), d1, d2, d3);
 
         //}
+        for(int my_size = 0; my_size < local_size; my_size++)
+            printf("\n P%d my_index[%d] = %8.8f", GA_Nodeid(), local_index[my_size], local_values[my_size]);
 
         Auv_ctf.write(local_size, local_index, local_values);
         if(profile_) printf("\n P%d Computing integrals takes %8.4f s.", GA_Nodeid(), compute_integrals_raw.get());
@@ -411,12 +413,19 @@ void ParallelDFJK::compute_qmn()
     int stride = naux;
     NGA_Get(J_12_GA_, begin_offset, end_offset, &j_12_buf[0], &stride);
     if(profile_) printf("\n  P%d J^({-1/2}} took %8.6f s.", GA_Nodeid(), J_one_half_time.get());
-    J_12_ctf.read_local(&size,&indices, &values);
+    //J_12_ctf.read_local(&size,&indices, &values);
+    
+    int64_t j_size = naux * naux;
+    int64_t * j_indices = new int64_t[j_size];
+    double  * j_values  = new double[j_size];
     for(int q = 0; q < naux * naux; q++)
-        values[q] = j_12_buf[q];
-    J_12_ctf.write(size, indices, values);
-    free(indices);
-    free(values);
+    {
+        j_indices[q] = q;
+        j_values[q] = j_12_buf[q];
+    }
+    J_12_ctf.write(j_size, j_indices, j_values);
+    free(j_indices);
+    free(j_values);
 
     Timer GA_DGEMM;
     GA_Dgemm('N', 'N', naux, nso * nso, naux, 1.0, J_12_GA_, A_UV_GA, 0.0, Q_UV_GA_);
@@ -424,15 +433,19 @@ void ParallelDFJK::compute_qmn()
     //J_12_ctf.print();
 
     Quv_ctf_["Quv"] = J_12_ctf["QA"] * Auv_ctf["Auv"];
+    outfile->Printf("\n J_12_Norm: %8.8f Auv_ctf_Norm: %8.8f Quv_ctf_Norm: %8.8f", J_12_ctf.norm2(), Auv_ctf.norm2(), Quv_ctf_.norm2());
+    //Auv_ctf.print();
+    //Quv_ctf_.print();
 
     double * a_values = new double[local_size];
     Quv_ctf_.read(local_size, local_index, a_values);
-    Quv_ctf_.read_local(&size, &indices, &values);
+    //Quv_ctf_.read_local(&size, &indices, &values);
     if(profile_) printf("\n  P%d DGEMM took %8.6f s.", GA_Nodeid(), GA_DGEMM.get());
     if(profile_) outfile->Printf("\n GA_Dgemm takes %8.4f s.", GA_DGEMM.get());
     local_quv_.resize(max_rows * nso * nso);
     Timer get_local_quv;
     //get_or_put_ga_batches(Q_UV_GA_, local_quv_, true);
+    double norm2 = 0.0;
     for(int q = 0; q < max_rows; q++)
         for(int u = 0; u < nso; u++)
             for(int v = 0; v < nso; v++)
@@ -440,9 +453,12 @@ void ParallelDFJK::compute_qmn()
         //outfile->Printf("\n local_quv_: %8.8f values: %8.8f", local_quv_[i], values[i]);
         //outfile->Printf("\n local_values: %8.8f values: %8.8f indices: %d global_index: %d", local_values[u * nso * max_rows + v * max_rows + q], values[u * nso * max_rows + v * max_rows + q], indices[u * nso * max_rows + v * max_rows + q], local_index[u * nso * max_rows + v * max_rows + q]);
         local_quv_[q * nso * nso + u * nso + v] = a_values[u * nso * max_rows + v * max_rows + q];
+        norm2 += local_quv_[q * nso * nso + u * nso + v] * local_quv_[q * nso * nso + u * nso + v];
     }
-    free(values);
-    free(indices);
+    double final_norm22 = 0.0;
+    MPI_Reduce(&norm2, &final_norm22, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
+    printf("\n P%d SquaredNorm2: %8.8f", GA_Nodeid(),norm2);
+    outfile->Printf("\n SquaredNorm: %8.8f", final_norm22);
     delete[] local_index;
     delete[] local_values;
     delete[] a_values;
@@ -450,13 +466,13 @@ void ParallelDFJK::compute_qmn()
     if(profile_) printf("\n P%d Get local_quv_ take %8.4f s.", GA_Nodeid(), get_local_quv.get());
     outfile->Printf("\n Get local_quv takes %8.4f s.", get_local_quv.get());
 
-    Timer destroy_ga_arrays;
-    GA_Destroy(A_UV_GA);
-    if(profile_) printf("\n P%d Destroyed A_UV takes %8.4f s.", destroy_ga_arrays.get());
-    GA_Destroy(J_12_GA_);
-    if(profile_) printf("\n P%d Destroyed J_{12} takes %8.4f s.", destroy_ga_arrays.get());
-    GA_Destroy(Q_UV_GA_);
-    if(profile_) printf("\n P%d Destroyed Q_UV takes %8.4f s.", destroy_ga_arrays.get());
+    //Timer destroy_ga_arrays;
+    //GA_Destroy(A_UV_GA);
+    //if(profile_) printf("\n P%d Destroyed A_UV takes %8.4f s.", destroy_ga_arrays.get());
+    //GA_Destroy(J_12_GA_);
+    //if(profile_) printf("\n P%d Destroyed J_{12} takes %8.4f s.", destroy_ga_arrays.get());
+    //GA_Destroy(Q_UV_GA_);
+    //if(profile_) printf("\n P%d Destroyed Q_UV takes %8.4f s.", destroy_ga_arrays.get());
 }
 void ParallelDFJK::compute_J()
 {
