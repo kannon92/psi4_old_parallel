@@ -995,6 +995,9 @@ class ParallelDFJK : public JK {
         void compute_K();
         void compute_K_sparse();
         void check_sparsity(CTF::Tensor<double>& my_tensor, int* tensor_dim, int dimension);
+        void Choleskify_Density(SharedMatrix D_in, SharedMatrix C_out);
+        void Localize_Occupied(SharedMatrix C_in, SharedMatrix C_out);
+
         /// Function for reading C matrices
         void Fill_C_Matrices(int64_t C_size, double* C_values, SharedMatrix Actual_C);
         /// Wrapper functions to perform a batched get/put over block_size (GA uses ints internally)
