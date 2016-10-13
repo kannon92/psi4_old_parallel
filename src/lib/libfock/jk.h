@@ -980,10 +980,6 @@ class ParallelDFJK : public JK {
         bool profile_ = false;
         int block_size_ = -1;
         boost::shared_ptr<ERISieve> sieve_;
-        ///J^{(-1/2)} fitting metric
-        int J_12_GA_  = 0;
-        ///(Q|UV) tensor created in initialization of JK
-        int Q_UV_GA_  = 0;
         std::vector<double> local_quv_;
         //CTF::Tensor<double>* Quv_ctf_;
         //CTF::World CTF_COMM_;
@@ -992,19 +988,16 @@ class ParallelDFJK : public JK {
         virtual void postiterations();
         virtual void print_header() const;
         void compute_qmn();
-        void J_one_half();
+        SharedMatrix J_one_half();
         /// Do a direct J(and/or) K build
         void compute_JK();
         void compute_J();
         void compute_K();
         void compute_K_sparse();
+        void check_sparsity(CTF::Tensor<double>& my_tensor, int* tensor_dim, int dimension);
         /// Function for reading C matrices
         void Fill_C_Matrices(int64_t C_size, double* C_values, SharedMatrix Actual_C);
         /// Wrapper functions to perform a batched get/put over block_size (GA uses ints internally)
-        /// ga_get tells whether to call NGA_Get or NGA_Put (if true, call NGA_Get)
-        void get_or_put_ga_batches(int MY_GA, std::vector<double>& ga_buf, bool ga_get);
-        /// Wrapper to perform DGEMM for GA arrays
-        void DF_Dgemm(int GA_left, int GA_right, int GA_final);
         //void block_K(double** Qmnp, int naux);
         virtual bool C1() const { return true; }
 
@@ -1362,6 +1355,7 @@ public:
     virtual void print_header() const;
 
 };
+
 
 #endif
 
