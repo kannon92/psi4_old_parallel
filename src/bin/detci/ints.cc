@@ -1061,7 +1061,7 @@ void CIWavefunction::onel_ints_from_jk() {
     Cl.clear();
     Cr.clear();
     Cl.push_back(Cdrc);
-    Cr.push_back(Cdrc);
+    //Cr.push_back(Cdrc);
     jk_->compute();
     Cl.clear();
     Cr.clear();

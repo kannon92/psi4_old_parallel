@@ -591,11 +591,10 @@ void ParallelDFJK::compute_K_sparse()
     delete [] quv_index;
     delete [] quv_ctf_values;
 
-    std::vector<std::string> local_tests (3);
-    local_tests[0] = "LOCALIZE";
-    local_tests[1] = "NORMAL";
-    local_tests[2] = "CHOLESKY";
-    //local_tests[1] = "LOCALIZE";
+    std::vector<std::string> local_tests;
+    local_tests.push_back("NORMAL");
+    local_tests.push_back("LOCALIZE");
+    local_tests.push_back("CHOLESKY");
 
     Quv_ctf.sparsify(1e-10);
     check_sparsity(Quv_ctf, aux_edge, 3);
@@ -632,7 +631,14 @@ void ParallelDFJK::compute_K_sparse()
             SharedMatrix C_right_matrix(new Matrix("C_left", nbf, nocc));
             C_left.set_zero();
             C_right.set_zero();
-            outfile->Printf("\n Performing Exchange build with %s orbitals", local_tests[orbital_type].c_str());
+            bool c_left_is_c_right = (C_left_ao_[N]->rms() == C_right_ao_[N]->rms());
+            if(!c_left_is_c_right)
+            {
+                outfile->Printf("\n Switching exchange algorithm to NORMAL because C_left and C_right are not symmetric");
+            }
+            else {
+                outfile->Printf("\n Performing Exchange build with %s orbitals", local_tests[orbital_type].c_str());
+            }
             if(local_tests[orbital_type] == "NORMAL")
             {
                 C_left_matrix->copy(C_left_ao_[N]);
@@ -642,15 +648,31 @@ void ParallelDFJK::compute_K_sparse()
             {
                 C_left_matrix->zero();
                 C_right_matrix->zero();
-                Choleskify_Density(C_left_ao_[N], C_left_matrix);
-                C_right_matrix->copy(C_left_matrix);
+                if(c_left_is_c_right)
+                {
+                    Choleskify_Density(C_left_ao_[N], C_left_matrix);
+                    C_right_matrix->copy(C_left_matrix);
+                }
+                else 
+                {
+                    C_left_matrix->copy(C_left_ao_[N]);
+                    C_right_matrix->copy(C_right_ao_[N]);
+                }
             }
             else if (local_tests[orbital_type] == "LOCALIZE")
             {
                 C_left_matrix->zero();
                 C_right_matrix->zero();
-                Localize_Occupied(C_left_ao_[N], C_left_matrix);
-                Localize_Occupied(C_right_ao_[N], C_right_matrix);
+                if(c_left_is_c_right)
+                {
+                    Localize_Occupied(C_left_ao_[N], C_left_matrix);
+                    Localize_Occupied(C_right_ao_[N], C_right_matrix);
+                }
+                else 
+                {
+                    C_left_matrix->copy(C_left_ao_[N]);
+                    C_right_matrix->copy(C_right_ao_[N]);
+                }
             }
             Fill_C_Matrices(C_left_size, C_left_values, C_left_matrix);
             Fill_C_Matrices(C_right_size, C_right_values, C_right_matrix);
@@ -659,7 +681,6 @@ void ParallelDFJK::compute_K_sparse()
 
             C_left.sparsify(1e-10);
             C_right.sparsify(1e-10);
-            outfile->Printf("\n C_leftNorm2: %8.8f", C_left.norm2());
 
             check_sparsity(C_left, Cui_size, 2);
             check_sparsity(C_right, Cui_size, 2);
