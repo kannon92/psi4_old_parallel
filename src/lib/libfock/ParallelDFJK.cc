@@ -642,9 +642,8 @@ void ParallelDFJK::compute_K_sparse()
             {
                 C_left_matrix->zero();
                 C_right_matrix->zero();
-                Choleskify_Density(D_ao_[N], C_left_matrix);
+                Choleskify_Density(C_left_ao_[N], C_left_matrix);
                 C_right_matrix->copy(C_left_matrix);
-                C_left_matrix->print();
             }
             else if (local_tests[orbital_type] == "LOCALIZE")
             {
@@ -652,7 +651,6 @@ void ParallelDFJK::compute_K_sparse()
                 C_right_matrix->zero();
                 Localize_Occupied(C_left_ao_[N], C_left_matrix);
                 Localize_Occupied(C_right_ao_[N], C_right_matrix);
-                C_left_matrix->print();
             }
             Fill_C_Matrices(C_left_size, C_left_values, C_left_matrix);
             Fill_C_Matrices(C_right_size, C_right_values, C_right_matrix);
