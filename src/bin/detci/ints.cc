@@ -236,6 +236,7 @@ void CIWavefunction::transform_dfmcscf_ints(bool approx_only) {
     SharedMatrix AO_C = SharedMatrix(new Matrix("AO_C", nao, aoc_rowdim));
 
     double** AO_Cp = AO_C->pointer();
+    Timer reorder_c_matrix;
     for (int h = 0, offset = 0, offset_act = 0; h < nirrep_; h++) {
         int hnso = AO2SO_->colspi()[h];
         if (hnso == 0) continue;
@@ -270,6 +271,7 @@ void CIWavefunction::transform_dfmcscf_ints(bool approx_only) {
             offset += nvirpih;
         }
     }
+    outfile->Printf("\n DFMCSCF: Reorder C matrix takes %8.5f s.", reorder_c_matrix.get());
 
     // => Compute DF ints <= //
     dferi_->clear();
@@ -287,11 +289,15 @@ void CIWavefunction::transform_dfmcscf_ints(bool approx_only) {
         dferi_->add_pair_space("RRQ", "R", "R");
     }
 
+    Timer dferi_compute;
     dferi_->compute();
+    outfile->Printf("\n DFMCSCF: Compute DF Integrals takes %8.5f s.", dferi_compute.get());
     std::map<std::string, boost::shared_ptr<Tensor> >& dfints = dferi_->ints();
 
     // => Compute onel ints <= //
+    Timer onel_ints;
     onel_ints_from_jk();
+    outfile->Printf("\n DFMCSCF: Computing {}^IF takes %8.5f s.", onel_ints.get());
 
     // => Compute twoel ints <= //
     int nQ = dferi_->size_Q();
@@ -303,7 +309,9 @@ void CIWavefunction::transform_dfmcscf_ints(bool approx_only) {
     FILE* aaQF = aaQT->file_pointer();
     fseek(aaQF, 0L, SEEK_SET);
     fread(aaQp, sizeof(double), nact * nact * nQ, aaQF);
+    Timer Full_DF_ints;
     SharedMatrix actMO = Matrix::doublet(aaQ, aaQ, false, true);
+    outfile->Printf("\n DFMCSCF: (Q|uv) * (xy | Q) takes %8.5f s.", Full_DF_ints.get());
     aaQ.reset();
 
     pitzer_to_ci_order_twoel(actMO, CalcInfo_->twoel_ints);

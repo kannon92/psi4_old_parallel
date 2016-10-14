@@ -370,8 +370,6 @@ void ParallelDFJK::compute_qmn()
 
     Quv_ctf_["Quv"] = J_12_ctf["QA"] * Auv_ctf["Auv"];
     outfile->Printf("\n J_12_Norm: %8.8f Auv_ctf_Norm: %8.8f Quv_ctf_Norm: %8.8f", J_12_ctf.norm2(), Auv_ctf.norm2(), Quv_ctf_.norm2());
-    J_12_ctf.print();
-    Auv_ctf.print();
 
     double * a_values = new double[local_size];
     Quv_ctf_.read(local_size, local_index, a_values);
@@ -594,10 +592,13 @@ void ParallelDFJK::compute_K_sparse()
     delete [] quv_ctf_values;
 
     std::vector<std::string> local_tests (3);
-    local_tests[0] = "NORMAL";
-    local_tests[1] = "CHOLESKY";
-    local_tests[2] = "LOCALIZE";
+    local_tests[0] = "LOCALIZE";
+    local_tests[1] = "NORMAL";
+    local_tests[2] = "CHOLESKY";
+    //local_tests[1] = "LOCALIZE";
 
+    Quv_ctf.sparsify(1e-10);
+    check_sparsity(Quv_ctf, aux_edge, 3);
     for(size_t N = 0; N < K_size; N++)
     {   
         int nocc = C_right_ao_[N]->colspi()[0];
@@ -608,11 +609,11 @@ void ParallelDFJK::compute_K_sparse()
         int sym_2[2]     = {NS, NS};
         int sym_3[3]     = {NS, NS, NS};
         
-        CTF::Tensor<double> Q_ui(3, true, q_ui_size, sym_3);
-        CTF::Tensor<double> Q_uj(3, true, q_ui_size, sym_3);
-        CTF::Tensor<double> C_right(2, true, Cui_size, sym_2);
-        CTF::Tensor<double> C_left(2, true, Cui_size, sym_2);
-        CTF::Tensor<double> K(2, true, K_size, sym_2);
+        CTF::Tensor<double> Q_ui(3, false, q_ui_size, sym_3);
+        CTF::Tensor<double> Q_uj(3, false, q_ui_size, sym_3);
+        CTF::Tensor<double> C_right(2, false, Cui_size, sym_2);
+        CTF::Tensor<double> C_left(2, false, Cui_size, sym_2);
+        CTF::Tensor<double> K(2, false, K_size, sym_2);
         int64_t C_left_size;
         double* C_left_values;
         int64_t C_right_size;
@@ -625,26 +626,33 @@ void ParallelDFJK::compute_K_sparse()
 
         C_left.read_all(&C_left_size, &C_left_values);
         C_right.read_all(&C_right_size, &C_right_values);
-        SharedMatrix C_left_matrix(new Matrix("C_left", nbf, nocc));
-        SharedMatrix C_right_matrix(new Matrix("C_left", nbf, nocc));
         for(int orbital_type = 0; orbital_type < local_tests.size(); orbital_type++)
         {
+            SharedMatrix C_left_matrix(new Matrix("C_left", nbf, nocc));
+            SharedMatrix C_right_matrix(new Matrix("C_left", nbf, nocc));
+            C_left.set_zero();
+            C_right.set_zero();
             outfile->Printf("\n Performing Exchange build with %s orbitals", local_tests[orbital_type].c_str());
             if(local_tests[orbital_type] == "NORMAL")
             {
-                C_left_matrix = C_left_ao_[N];
-                C_right_matrix = C_right_ao_[N];
+                C_left_matrix->copy(C_left_ao_[N]);
+                C_right_matrix->copy(C_right_ao_[N]);
             }
             else if (local_tests[orbital_type] == "CHOLESKY")
             {
+                C_left_matrix->zero();
+                C_right_matrix->zero();
                 Choleskify_Density(D_ao_[N], C_left_matrix);
-                C_right_matrix = C_left_matrix;
+                C_right_matrix->copy(C_left_matrix);
+                C_left_matrix->print();
             }
             else if (local_tests[orbital_type] == "LOCALIZE")
             {
+                C_left_matrix->zero();
+                C_right_matrix->zero();
                 Localize_Occupied(C_left_ao_[N], C_left_matrix);
-                Localize_Occupied(C_right_ao_[N], C_left_matrix);
-                C_right_matrix = C_right_matrix;
+                Localize_Occupied(C_right_ao_[N], C_right_matrix);
+                C_left_matrix->print();
             }
             Fill_C_Matrices(C_left_size, C_left_values, C_left_matrix);
             Fill_C_Matrices(C_right_size, C_right_values, C_right_matrix);
@@ -653,18 +661,20 @@ void ParallelDFJK::compute_K_sparse()
 
             C_left.sparsify(1e-10);
             C_right.sparsify(1e-10);
-            Quv_ctf.sparsify(1e-10);
+            outfile->Printf("\n C_leftNorm2: %8.8f", C_left.norm2());
 
             check_sparsity(C_left, Cui_size, 2);
             check_sparsity(C_right, Cui_size, 2);
-            check_sparsity(Quv_ctf, aux_edge, 3);
 
             Timer Q_ui_sparse;
-            Q_ui["Qui"] += Quv_ctf["Quv"] * C_right["vi"];
+            Q_ui.set_zero();
+            Q_uj.set_zero();
+            K.set_zero();
+            Q_ui["Qui"] = Quv_ctf["Quv"] * C_right["vi"];
             outfile->Printf("\n Quv_ctf * C_right takes %8.4f s.", Q_ui_sparse.get());
             Timer Q_uj_sparse;
-            Q_uj["Quj"] += Quv_ctf["Quv"] * C_left["vj"];
-            outfile->Printf("\n Quv_ctf * C_right takes %8.4f s.", Q_uj_sparse.get());
+            Q_uj["Quj"] = Quv_ctf["Quv"] * C_left["vj"];
+            outfile->Printf("\n Quv_ctf * C_left takes %8.4f s.", Q_uj_sparse.get());
             Timer K_sparse;
             K["uv"] = Q_ui["Qui"] * Q_uj["Qvi"];
             outfile->Printf("\n K_uv = Q_ui * Q_uj takes %8.4f s.", K_sparse.get());
@@ -675,10 +685,9 @@ void ParallelDFJK::compute_K_sparse()
             double* k_values;
             
             K.read_all(&k_size, &k_values);
-            for(int mu = 0; mu < nbf; mu++)
-                for(int nu = 0; nu < nbf; nu++)
-                    K_ao_[N]->set(mu, nu, k_values[mu * nbf + nu]);
+            C_DCOPY(nbf * nbf, &k_values[0], 1, &K_ao_[N]->pointer()[0][0], 1);
             free(k_values);
+            outfile->Printf("\n K_ao_rms(%s): %8.8f", local_tests[orbital_type].c_str(), K_ao_[N]->rms());
         }
         delete[] C_index;
     }
@@ -769,6 +778,7 @@ void ParallelDFJK::Fill_C_Matrices(int64_t C_size, double* C_data, SharedMatrix 
     {
         for(int bf = 0; bf < primary_->nbf(); bf++)
             for(int occ = 0; occ < C_matrix->colspi()[0]; occ++){
+                C_data[occ * primary_->nbf() + bf] = 0.0;
                 C_data[occ * primary_->nbf() + bf] = C_matrix->get(bf, occ);
             }
     }
@@ -788,19 +798,24 @@ void ParallelDFJK::check_sparsity(CTF::Tensor<double>& tensor_data, int* tensor_
     for(int n = 0; n < dimension; n++)
         total_elements *= tensor_dim[n];
 
-    outfile->Printf("\n There are %d non zeros out of %d which is %8.4f percent sparsity", non_zeros, total_elements, ( 1.0 - (non_zeros * 1.0 / total_elements)) * 100.0);
+    outfile->Printf("\n There are %d non-zeros out of %d which is %8.4f percent sparsity", non_zeros, total_elements, ( 1.0 - (non_zeros * 1.0 / total_elements)) * 100.0);
 }
 void ParallelDFJK::Choleskify_Density(SharedMatrix D_in, SharedMatrix C_out)
 {
-    boost::shared_ptr<Cholesky> cholesky(new CholeskyLocal(D_in, 0.0000000001, 1000000000));
+    SharedMatrix D_copy(D_in);
+    boost::shared_ptr<Cholesky> cholesky(new CholeskyLocal(D_copy, 0.000001, 1000000000));
     cholesky->choleskify();
-    C_out = cholesky->L();
-    outfile->Printf("\n C_row: %d C_right: %d", C_out->nrow(), C_out->ncol());
+    SharedMatrix C_raw = cholesky->L();
+    C_out->zero();
+    for(int row = 0; row < C_raw->nrow(); row++)
+        for(int col = 0; col < C_raw->ncol(); col++)
+            C_out->set(col, row, C_raw->get(row, col));
 }
 void ParallelDFJK::Localize_Occupied(SharedMatrix C_in, SharedMatrix C_out)
 {
-    boost::shared_ptr<Localizer> localizer = Localizer::build("BOYS", primary_, C_in);
+    SharedMatrix C_copy(C_in);
+    boost::shared_ptr<Localizer> localizer = Localizer::build("BOYS", primary_, C_copy);
     localizer->localize();
-    C_out = localizer->L();
+    C_out->copy(localizer->L());
 }
 }

@@ -59,6 +59,7 @@ void CIWavefunction::compute_mcscf()
   Parameters_->print_lvl = 0;
 
   boost::shared_ptr<SOMCSCF> somcscf;
+  Timer single_transform_integrals;
   if (MCSCF_Parameters_->mcscf_type == "DF"){
     transform_dfmcscf_ints(!MCSCF_Parameters_->orbital_so);
     somcscf = boost::shared_ptr<SOMCSCF>(new DFSOMCSCF(jk_, dferi_, AO2SO_, H_));
@@ -73,6 +74,7 @@ void CIWavefunction::compute_mcscf()
     transform_mcscf_ints(!MCSCF_Parameters_->orbital_so);
     somcscf = boost::shared_ptr<SOMCSCF>(new DiskSOMCSCF(jk_, ints_, AO2SO_, H_));
   }
+  outfile->Printf("\n TransForm Integrals with %s algorithm takes %8.5f s.", MCSCF_Parameters_->mcscf_type.c_str(), single_transform_integrals.get());
 
   somcscf->set_ck_algorithm(options_.get_str("MCSCF_CK_ALGORITHM"));
 
