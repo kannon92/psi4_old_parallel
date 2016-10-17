@@ -972,12 +972,14 @@ class ParallelDFJK : public JK {
         void set_df_ints_num_threads(int val) { df_ints_num_threads_ = val; }
         void set_batch_size(int block_size) { block_size_ = block_size; }
         void set_profile(bool profile) { profile_ = profile; }
+        void set_sparse_k(bool sparse_k) {sparse_k_ = sparse_k; }
         virtual ~ParallelDFJK();
     protected:
         boost::shared_ptr<BasisSet> auxiliary_;
         int df_ints_num_threads_;
         double condition_;
         bool profile_ = false;
+        bool sparse_k_ = false;
         int block_size_ = -1;
         boost::shared_ptr<ERISieve> sieve_;
         std::vector<double> local_quv_;

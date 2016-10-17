@@ -330,6 +330,9 @@ int DFJK::max_rows() const
     size_t three_int = max_rows * primary_->nbf() * max_nocc() * 8;
     if(three_int > memory_){
         outfile->Printf("Something is going wrong with memory check: max_rows: %d three_int %lu memory_ %lu", max_rows, three_int, memory_);
+        outfile->Printf("\n Auxiliary basis set is %d", auxiliary_->nbf());
+        outfile->Printf("\n Setting MAX_ROWS to be 1");
+        max_rows = 1L;
     }
     return (int) max_rows;
 }

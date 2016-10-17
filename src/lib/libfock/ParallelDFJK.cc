@@ -52,9 +52,12 @@ void ParallelDFJK::compute_JK()
         Timer compute_local_K;
         compute_K();
         outfile->Printf("\n computing K Dense takes %8.5f s.", compute_local_K.get());
-        Timer compute_K_sparse_time;
-        compute_K_sparse();
-        outfile->Printf("\n computing K Sparse takes %8.5f s.", compute_K_sparse_time.get());
+        if(sparse_k_)
+        {
+            Timer compute_K_sparse_time;
+            compute_K_sparse();
+            outfile->Printf("\n computing K Sparse takes %8.5f s.", compute_K_sparse_time.get());
+        }
     }
 }
 SharedMatrix ParallelDFJK::J_one_half()
@@ -261,6 +264,7 @@ void ParallelDFJK::compute_qmn()
     CTF::Tensor<double> Auv_ctf(3, false, auv_edge, dw);
     CTF::Tensor<double> Quv_ctf_(3, false, auv_edge, dw);
     CTF::Tensor<double> J_12_ctf(2, false,j12_edge, dw);
+    printf("\n P%d Tensors are all allocated!", my_rank);
     int64_t local_size = max_rows * nso * nso;
     int64_t * local_index = new int64_t[local_size];
     double * local_values = new double[local_size];
@@ -362,20 +366,26 @@ void ParallelDFJK::compute_qmn()
             else j_values[q1 * naux + q2] = 0.0;
         }
     
+    Timer J_12_write;
     J_12_ctf.write(j_size, j_indices, j_values);
+    if(profile_) printf("\n P%d write of J^{(-1/2)} takes %8.5f s.", my_rank, J_12_write.get());
 
     delete[] j_indices;
     delete[] j_values;
     
 
+    Timer QUV_CONTRACT;
     Quv_ctf_["Quv"] = J_12_ctf["QA"] * Auv_ctf["Auv"];
-    outfile->Printf("\n J_12_Norm: %8.8f Auv_ctf_Norm: %8.8f Quv_ctf_Norm: %8.8f", J_12_ctf.norm2(), Auv_ctf.norm2(), Quv_ctf_.norm2());
+    if(profile_) printf("\n P%d Contraction of J^{(-1/2)} * (A|uv) takes %8.5f s.", my_rank, QUV_CONTRACT.get());
 
     double * a_values = new double[local_size];
+    Timer quv_ctf_read;
     Quv_ctf_.read(local_size, local_index, a_values);
+    if(profile_) printf("\n P%d write of Quv takes %8.5f s.", my_rank,quv_ctf_read.get());
     local_quv_.resize(max_rows * nso * nso);
     Timer get_local_quv;
     double norm2 = 0.0;
+    Timer fill_local;
     for(int q = 0; q < max_rows; q++)
         for(int u = 0; u < nso; u++)
             for(int v = 0; v < nso; v++)
@@ -383,6 +393,7 @@ void ParallelDFJK::compute_qmn()
         local_quv_[q * nso * nso + u * nso + v] = a_values[u * nso * max_rows + v * max_rows + q];
         //norm2 += local_quv_[q * nso * nso + u * nso + v] * local_quv_[q * nso * nso + u * nso + v];
     }
+    if(profile_) printf("\n P%d Filling local_quv takes %8.5f s.", my_rank,fill_local.get());
     //double final_norm22 = 0.0;
     //MPI_Reduce(&norm2, &final_norm22, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
     //printf("\n P%d SquaredNorm2: %8.8f", my_rank,norm2);
@@ -492,7 +503,7 @@ void ParallelDFJK::compute_K()
 
             C_DGEMM('N', 'N', local_naux * nbf, nocc, nbf, 1.0, &local_quv_[0], nbf, Clp[0], nocc, 0.0, BQ_ui->pointer()[0], nocc);
             if(profile_) printf("\n P%d B * C takes %8.4f", my_rank, B_C_halftrans.get());
-	    if(profile_) outfile->Printf("\n B * C takes %8.4f", B_C_halftrans.get());
+	        if(profile_) outfile->Printf("\n B * C takes %8.4f", B_C_halftrans.get());
 
             Timer swap_index;
             #pragma omp parallel for
@@ -563,6 +574,7 @@ void ParallelDFJK::compute_K_sparse()
     CTF::World dw(MPI_COMM_WORLD);
     int my_rank = dw.rank;
     int my_size = dw.np;
+    outfile->Printf("\n Performing a Sparse Exchange build with %d processors and %d threads", my_size, omp_get_num_threads());
 
     int shell_per_process = auxiliary_->nshell() / my_size;
     int shell_start = shell_per_process * my_rank;
@@ -595,6 +607,7 @@ void ParallelDFJK::compute_K_sparse()
     local_tests.push_back("NORMAL");
     local_tests.push_back("LOCALIZE");
     local_tests.push_back("CHOLESKY");
+    local_tests.push_back("DENSITY");
 
     Quv_ctf.sparsify(1e-10);
     check_sparsity(Quv_ctf, aux_edge, 3);
@@ -610,8 +623,10 @@ void ParallelDFJK::compute_K_sparse()
         
         CTF::Tensor<double> Q_ui(3, false, q_ui_size, sym_3);
         CTF::Tensor<double> Q_uj(3, false, q_ui_size, sym_3);
+        CTF::Tensor<double> Q_ur(3, false, aux_edge, sym_3);
         CTF::Tensor<double> C_right(2, false, Cui_size, sym_2);
         CTF::Tensor<double> C_left(2, false, Cui_size, sym_2);
+        CTF::Tensor<double> D_right(2, false, K_size, sym_2);
         CTF::Tensor<double> K(2, false, K_size, sym_2);
         int64_t C_left_size;
         double* C_left_values;
@@ -674,35 +689,79 @@ void ParallelDFJK::compute_K_sparse()
                     C_right_matrix->copy(C_right_ao_[N]);
                 }
             }
-            Fill_C_Matrices(C_left_size, C_left_values, C_left_matrix);
-            Fill_C_Matrices(C_right_size, C_right_values, C_right_matrix);
-            C_left.write(C_left_size, C_index,C_left_values);
-            C_right.write(C_right_size, C_index,C_right_values);
+            else if (local_tests[orbital_type] == "DENSITY")
+            {
+                C_left_matrix->zero();
+                C_right_matrix->zero();
+                //C_right_matrix->copy(D_ao_[N]);
 
-            C_left.sparsify(1e-10);
-            C_right.sparsify(1e-10);
+                int64_t D_right_size;
+                double* D_right_values;
+                        
+                D_right.read_all(&D_right_size, &D_right_values);
+                int64_t* D_index = new int64_t[D_right_size];
+                for(int dr = 0; dr < D_right_size; dr++)
+                    D_index[dr] = dr;
+                SharedMatrix D_right_matrix(new Matrix("D_AO", nbf, nbf));
+                D_right_matrix->copy(D_ao_[N]);
+                Fill_C_Matrices(D_right_size, D_right_values, D_right_matrix);
+                D_right.write(D_right_size, D_index, D_right_values);
+                delete[] D_index;
+                free(D_right_values);
+                D_right.sparsify(1e-10);
+            }
 
-            check_sparsity(C_left, Cui_size, 2);
-            check_sparsity(C_right, Cui_size, 2);
+            if(local_tests[orbital_type] != "DENSITY")
+            {
+                Fill_C_Matrices(C_left_size, C_left_values, C_left_matrix);
+                Fill_C_Matrices(C_right_size, C_right_values, C_right_matrix);
+                C_left.write(C_left_size, C_index,C_left_values);
+                C_right.write(C_right_size, C_index,C_right_values);
+                C_left.sparsify(1e-10);
+                C_right.sparsify(1e-10);
+            }
 
-            Timer Q_ui_sparse;
+
+            if(local_tests[orbital_type] == "DENSITY")
+            {
+                //check_sparsity(C_left, Cui_size, 2);
+                check_sparsity(D_right, K_size, 2);
+            }
+            else {
+                check_sparsity(C_left, Cui_size, 2);
+                check_sparsity(C_right,Cui_size, 2);
+            }
+
             Q_ui.set_zero();
             Q_uj.set_zero();
+            Q_ur.set_zero();
             K.set_zero();
-            Q_ui["Qui"] = Quv_ctf["Quv"] * C_right["vi"];
-            outfile->Printf("\n Quv_ctf * C_right takes %8.4f s.", Q_ui_sparse.get());
-            Timer Q_uj_sparse;
-            Q_uj["Quj"] = Quv_ctf["Quv"] * C_left["vj"];
-            outfile->Printf("\n Quv_ctf * C_left takes %8.4f s.", Q_uj_sparse.get());
-            Timer K_sparse;
-            K["uv"] = Q_ui["Qui"] * Q_uj["Qvi"];
-            outfile->Printf("\n K_uv = Q_ui * Q_uj takes %8.4f s.", K_sparse.get());
-            check_sparsity(Q_ui, q_ui_size, 3);
-            check_sparsity(Q_uj, q_ui_size, 3);
+            if(local_tests[orbital_type] == "DENSITY")
+            {
+                Timer Q_ui_sparse;
+                Q_ur["Qui"] = Quv_ctf["Qur"] * D_right["ri"];
+                outfile->Printf("\n Quv_ctf * D_right takes %8.4f s.", Q_ui_sparse.get());
+                Timer K_sparse;
+                K["uv"] = Quv_ctf["Qur"] * Q_ur["Qvr"];
+                outfile->Printf("\n K_uv = Q_ui * Q_uj takes %8.4f s.", K_sparse.get());
+                check_sparsity(Q_ur, aux_edge, 3);
+            }
+            else {
+                Timer Q_ui_sparse;
+                Q_ui["Qui"] = Quv_ctf["Quv"] * C_left["vi"];
+                outfile->Printf("\n Quv_ctf * C_right takes %8.4f s.", Q_ui_sparse.get());
+                Timer Q_uj_sparse;
+                Q_uj["Quj"] = Quv_ctf["Quv"] * C_right["vj"];
+                outfile->Printf("\n Quv_ctf * C_left takes %8.4f s.", Q_uj_sparse.get());
+                Timer K_sparse;
+                K["uv"] = Q_ui["Qui"] * Q_uj["Qvi"];
+                outfile->Printf("\n K_uv = Q_ui * Q_uj takes %8.4f s.", K_sparse.get());
+                check_sparsity(Q_ui, q_ui_size, 3);
+                check_sparsity(Q_uj, q_ui_size, 3);
+            }
             check_sparsity(K, K_size, 2);
             int64_t k_size;
             double* k_values;
-            
             K.read_all(&k_size, &k_values);
             C_DCOPY(nbf * nbf, &k_values[0], 1, &K_ao_[N]->pointer()[0][0], 1);
             free(k_values);
