@@ -973,13 +973,17 @@ class ParallelDFJK : public JK {
         void set_batch_size(int block_size) { block_size_ = block_size; }
         void set_profile(bool profile) { profile_ = profile; }
         void set_sparse_k(bool sparse_k) {sparse_k_ = sparse_k; }
+        void set_sparse_j(bool sparse_j) {sparse_j_ = sparse_j; }
+        void set_sparsity_tolerance(double sparsity_tolerance) {sparsity_tol_ = sparsity_tolerance; }
         virtual ~ParallelDFJK();
     protected:
         boost::shared_ptr<BasisSet> auxiliary_;
         int df_ints_num_threads_;
         double condition_;
+        double sparsity_tol_ = 1e-10;
         bool profile_ = false;
         bool sparse_k_ = false;
+        bool sparse_j_ = false;
         int block_size_ = -1;
         boost::shared_ptr<ERISieve> sieve_;
         std::vector<double> local_quv_;
@@ -994,6 +998,7 @@ class ParallelDFJK : public JK {
         /// Do a direct J(and/or) K build
         void compute_JK();
         void compute_J();
+        void compute_J_sparse();
         void compute_K();
         void compute_K_sparse();
         void check_sparsity(CTF::Tensor<double>& my_tensor, int* tensor_dim, int dimension);

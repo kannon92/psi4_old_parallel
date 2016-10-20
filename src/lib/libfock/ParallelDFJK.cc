@@ -46,6 +46,12 @@ void ParallelDFJK::compute_JK()
         Timer compute_local_j;
         compute_J();
         outfile->Printf("\n computing J takes %8.5f s.", compute_local_j.get());
+        if(sparse_j_)
+        {
+            Timer compute_J_sparse_time;
+            compute_J_sparse();
+            outfile->Printf("\n computing J Sparse takes %8.5f s.", compute_J_sparse_time.get());
+        }
     }
     if(do_K_)
     {
@@ -458,6 +464,69 @@ void ParallelDFJK::compute_J()
     }
     if(profile_) printf("\nP%d Compute_J takes %8.6f s for %d densities", my_rank, Compute_J_all.get(), J_ao_.size());
 }
+void ParallelDFJK::compute_J_sparse()
+{
+    outfile->Printf("\n Performing Cyclops contraction for J using sparsity");
+    int my_rank = CTF_COMM_->rank;
+    int my_size = CTF_COMM_->np;
+    ///Some basic information (naux -> auxiliary basis set size
+    int naux = auxiliary_->nbf();
+    int nso = D_ao_[0]->rowspi()[0];
+    unsigned long int num_nm = nso * nso;
+
+    int D_size[2] = {nso, nso};
+    int sym_2[2]  = {NS, NS};
+    
+    CTF::Tensor<double> Quv_ctf(true, *Quv_ctf_);
+    CTF::Tensor<double> D_ao(2, false, D_size, sym_2);
+    CTF::Tensor<double> J_ao(2, false, D_size, sym_2);
+    CTF::Vector<double> J_V(naux);
+   
+    Quv_ctf.sparsify(sparsity_tol_);
+    ///(nso -> number of basis functions
+
+    ///Local q_uv for get and J_V
+    Timer Compute_J_all;
+
+    for(size_t N = 0; N < J_ao_.size(); N++)
+    {
+        Timer Compute_J_one;
+        int64_t D_right_size;
+        double* D_right_values;
+        
+        Timer Fill_D_AO;
+        D_ao.read_all(&D_right_size, &D_right_values);
+        int64_t* D_index = new int64_t[D_right_size];
+        for(int dr = 0; dr < D_right_size; dr++)
+            D_index[dr] = dr;
+        SharedMatrix D_right_matrix(new Matrix("D_AO", nso, nso));
+        D_right_matrix->copy(D_ao_[N]);
+        Fill_C_Matrices(D_right_size, D_right_values, D_right_matrix);
+        D_ao.write(D_right_size, D_index, D_right_values);
+        if(profile_) outfile->Printf("\n Full_D_AO takes %8.5f s.", Fill_D_AO.get());
+        delete[] D_index;
+        free(D_right_values);
+        D_ao.sparsify(sparsity_tol_);
+
+        ///This loop is parallelized over MPI
+        ///Q_UV_GA is distributed with auxiliary_index
+        double** Jp = J_ao_[N]->pointer();
+        ///J_Q = B^Q_{pq} D_{pq}
+        Timer B_D;
+        J_V["Q"] = Quv_ctf["Quv"] * D_ao["uv"];
+        if(profile_) outfile->Printf("\n (B^{Q}_{uv} * D) sparse", B_D.get());
+        Timer B_J;
+        J_ao["uv"] = Quv_ctf["Quv"] * J_V["Q"];
+        if(profile_) outfile->Printf("\n (B^{Q}_{uv} * J_v(Q)) sparse", B_J.get());
+        J_ao.read_all(&D_right_size, &D_right_values);
+        for(int j = 0; j < D_right_size; j++)
+        {
+            J_ao_[N]->set(j / nso, j % nso, D_right_values[j]);
+        }
+        if(profile_) outfile->Printf("\n Compute J sparse took %8.4f s for %d density.", Compute_J_one.get(), N);
+
+    }
+}
 void ParallelDFJK::compute_K()
 {
     /// K_{uv} = D_{pq} B^{Q}_{up} * B^{Q}_{vq}
@@ -593,7 +662,7 @@ void ParallelDFJK::compute_K_sparse()
     local_tests.push_back("CHOLESKY_DENSITY");
 
     CTF::Tensor<double> Quv_ctf(true, *Quv_ctf_);
-    Quv_ctf.sparsify(1e-10);
+    Quv_ctf.sparsify(sparsity_tol_);
     check_sparsity(Quv_ctf, aux_edge, 3);
     Quv_ctf.set_name("QUV");
     for(size_t N = 0; N < K_size; N++)
@@ -695,7 +764,7 @@ void ParallelDFJK::compute_K_sparse()
                 D_right.write(D_right_size, D_index, D_right_values);
                 delete[] D_index;
                 free(D_right_values);
-                D_right.sparsify(1e-10);
+                D_right.sparsify(sparsity_tol_);
             }
             else if (local_tests[orbital_type] == "CHOLESKY_DENSITY") 
             {
@@ -712,8 +781,8 @@ void ParallelDFJK::compute_K_sparse()
                 Fill_C_Matrices(C_right_size, C_right_values, C_right_matrix);
                 C_left.write(C_left_size, C_index,C_left_values);
                 C_right.write(C_right_size, C_index,C_right_values);
-                C_left.sparsify(1e-10);
-                C_right.sparsify(1e-10);
+                C_left.sparsify(sparsity_tol_);
+                C_right.sparsify(sparsity_tol_);
             }
 
 

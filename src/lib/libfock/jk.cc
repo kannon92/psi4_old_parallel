@@ -135,6 +135,10 @@ boost::shared_ptr<JK> JK::build_JK(boost::shared_ptr<BasisSet> primary, Options&
             jk->set_profile(options.get_bool("PARALLELDF_PROFILE"));
         if (options["PARALLELDF_SPARSE_K"].has_changed())
             jk->set_sparse_k(options.get_bool("PARALLELDF_SPARSE_K"));
+        if (options["PARALLELDF_SPARSE_J"].has_changed())
+            jk->set_sparse_j(options.get_bool("PARALLELDF_SPARSE_J"));
+        if (options["PARALLELDF_SPARSITY"].has_changed())
+            jk->set_sparsity_tolerance(options.get_double("PARALLELDF_SPARSITY"));
 
         return boost::shared_ptr<JK>(jk);
     } else if (jk_type == "FAST_DF") {

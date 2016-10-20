@@ -1382,11 +1382,13 @@ int read_options(const std::string &name, Options & options, bool suppress_print
     /*- SUBSECTION PARALLELDF Algorithm -*/
 
     /*- Profile each J and K build -*/
-    options.add_bool("PARALLELDF_PROFILE", true);
+    options.add_bool("PARALLELDF_PROFILE", false);
     /*- Do SPARSE_K build -*/
-    options.add_bool("PARALLELDF_SPARSE_K", true);
-    
-    
+    options.add_bool("PARALLELDF_SPARSE_K", false);
+    /*- Do SPARSE_J build -*/
+    options.add_bool("PARALLELDF_SPARSE_J", false);
+    /*- Sparsity tolerance for Cyclops -*/
+    options.add_double("PARALLELDF_SPARSITY", 1e-10);
 
     /*- SUBSECTION SAD Guess Algorithm -*/
 
