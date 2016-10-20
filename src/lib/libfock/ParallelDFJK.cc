@@ -25,7 +25,7 @@ void ParallelDFJK::common_init()
 {
     outfile->Printf("\n ParallelDFJK");
     memory_ = Process::environment.get_memory();
-    //(MPI_COMM_WORLD);
+    CTF_COMM_ = std::make_shared<CTF::World>(MPI_COMM_WORLD);
     
 }
 void ParallelDFJK::preiterations()
@@ -146,9 +146,9 @@ SharedMatrix ParallelDFJK::J_one_half()
 }
 void ParallelDFJK::compute_qmn()
 {
-    CTF::World dw(MPI_COMM_WORLD);
-    int my_rank = dw.rank;
-    int num_proc = dw.np;
+    //CTF::World dw(MPI_COMM_WORLD);
+    int my_rank = CTF_COMM_->rank;
+    int num_proc = CTF_COMM_->np;
     // > Sizing < //
 
     size_t nso = primary_->nbf();
@@ -261,9 +261,9 @@ void ParallelDFJK::compute_qmn()
     //CTF::Matrix<double> J_12_ctf(naux, naux,  dw);
     int auv_edge[3] = {naux, nso, nso};
     int j12_edge[2] = {naux, naux};
-    CTF::Tensor<double> Auv_ctf(3, false, auv_edge, dw);
-    CTF::Tensor<double> Quv_ctf_(3, false, auv_edge, dw);
-    CTF::Tensor<double> J_12_ctf(2, false,j12_edge, dw);
+    CTF::Tensor<double> Auv_ctf(3, false, auv_edge, *CTF_COMM_);
+    CTF::Tensor<double> Quv_ctf(3, false, auv_edge, *CTF_COMM_);
+    CTF::Tensor<double> J_12_ctf(2, false,j12_edge, *CTF_COMM_);
     printf("\n P%d Tensors are all allocated!", my_rank);
     int64_t local_size = max_rows * nso * nso;
     int64_t * local_index = new int64_t[local_size];
@@ -375,12 +375,12 @@ void ParallelDFJK::compute_qmn()
     
 
     Timer QUV_CONTRACT;
-    Quv_ctf_["Quv"] = J_12_ctf["QA"] * Auv_ctf["Auv"];
+    Quv_ctf["Quv"] = J_12_ctf["QA"] * Auv_ctf["Auv"];
     if(profile_) printf("\n P%d Contraction of J^{(-1/2)} * (A|uv) takes %8.5f s.", my_rank, QUV_CONTRACT.get());
 
     double * a_values = new double[local_size];
     Timer quv_ctf_read;
-    Quv_ctf_.read(local_size, local_index, a_values);
+    Quv_ctf.read(local_size, local_index, a_values);
     if(profile_) printf("\n P%d write of Quv takes %8.5f s.", my_rank,quv_ctf_read.get());
     local_quv_.resize(max_rows * nso * nso);
     Timer get_local_quv;
@@ -404,13 +404,15 @@ void ParallelDFJK::compute_qmn()
 
     if(profile_) printf("\n P%d Get local_quv_ take %8.4f s.", my_rank, get_local_quv.get());
     outfile->Printf("\n Get local_quv takes %8.4f s.", get_local_quv.get());
+    Quv_ctf_.reset();
+    Quv_ctf_ = std::make_shared<CTF::Tensor<double> >(true, Quv_ctf);
+    outfile->Printf("\n Quv_ctf_ = %8.8f", Quv_ctf_->norm2());
 
 }
 void ParallelDFJK::compute_J()
 {
-    CTF::World dw(MPI_COMM_WORLD);
-    int my_rank = dw.rank;
-    int my_size = dw.np;
+    int my_rank = CTF_COMM_->rank;
+    int my_size = CTF_COMM_->np;
     ///Some basic information (naux -> auxiliary basis set size
     int naux = auxiliary_->nbf();
     ///(nso -> number of basis functions
@@ -474,9 +476,8 @@ void ParallelDFJK::compute_K()
 
     /// Can have multiple exchange matrices
     /// GA Specific information
-    CTF::World dw(MPI_COMM_WORLD);
-    int my_size = dw.np;
-    int my_rank = dw.rank;
+    int my_size = CTF_COMM_->np;
+    int my_rank = CTF_COMM_->rank;
 
     size_t K_size = K_ao_.size();
     Timer Compute_K_all;
@@ -571,10 +572,9 @@ void ParallelDFJK::compute_K_sparse()
     
     /// Can have multiple exchange matrices
     /// GA Specific information
-    CTF::World dw(MPI_COMM_WORLD);
-    int my_rank = dw.rank;
-    int my_size = dw.np;
-    outfile->Printf("\n Performing a Sparse Exchange build with %d processors and %d threads", my_size, omp_get_num_threads());
+    int my_rank = CTF_COMM_->rank;
+    int my_size = CTF_COMM_->np;
+    outfile->Printf("\n Performing a Sparse Exchange build with %d processors and %d threads", my_size, omp_get_max_threads());
 
     int shell_per_process = auxiliary_->nshell() / my_size;
     int shell_start = shell_per_process * my_rank;
@@ -585,23 +585,22 @@ void ParallelDFJK::compute_K_sparse()
     int naux = auxiliary_->nbf();
     int nbf  = primary_->nbf();
     int aux_edge[3] = {naux, nbf, nbf};
-    CTF::Tensor<double> Quv_ctf(3, false, aux_edge, dw);
     //Quv_ctf.read_local(&quv_ctf_size, &quv_index,&quv_ctf_values);
-    int nso = nbf;
-    size_t local_naux = local_quv_.size() / (nbf * nbf);
-    int64_t quv_ctf_size = local_naux * nbf * nbf;
-    int64_t* quv_index = new int64_t[quv_ctf_size];
-    double*  quv_ctf_values = new double[quv_ctf_size];
-    for(int q = 0; q < local_naux; q++)
-        for(int u = 0; u < nbf; u++)
-            for(int v = 0; v < nbf; v++)
-    {
-        quv_index[u * nso * local_naux + v * local_naux + q] = u * nso * naux + v * naux + q + function_start;
-        quv_ctf_values[u * nso * local_naux + v * local_naux + q] = local_quv_[q * nso * nso + u * nso + v];
-    }
-    Quv_ctf.write(quv_ctf_size, quv_index, quv_ctf_values);
-    delete [] quv_index;
-    delete [] quv_ctf_values;
+    //int nso = nbf;
+    //size_t local_naux = local_quv_.size() / (nbf * nbf);
+    //int64_t quv_ctf_size = local_naux * nbf * nbf;
+    //int64_t* quv_index = new int64_t[quv_ctf_size];
+    //double*  quv_ctf_values = new double[quv_ctf_size];
+    //for(int q = 0; q < local_naux; q++)
+    //    for(int u = 0; u < nbf; u++)
+    //        for(int v = 0; v < nbf; v++)
+    //{
+    //    quv_index[u * nso * local_naux + v * local_naux + q] = u * nso * naux + v * naux + q + function_start;
+    //    quv_ctf_values[u * nso * local_naux + v * local_naux + q] = local_quv_[q * nso * nso + u * nso + v];
+    //}
+    //Quv_ctf.write(quv_ctf_size, quv_index, quv_ctf_values);
+    //delete [] quv_index;
+    //delete [] quv_ctf_values;
 
     std::vector<std::string> local_tests;
     local_tests.push_back("NORMAL");
@@ -609,8 +608,10 @@ void ParallelDFJK::compute_K_sparse()
     local_tests.push_back("CHOLESKY");
     local_tests.push_back("DENSITY");
 
+    CTF::Tensor<double> Quv_ctf(true, *Quv_ctf_);
     Quv_ctf.sparsify(1e-10);
     check_sparsity(Quv_ctf, aux_edge, 3);
+    Quv_ctf.set_name("QUV");
     for(size_t N = 0; N < K_size; N++)
     {   
         int nocc = C_right_ao_[N]->colspi()[0];
@@ -850,8 +851,9 @@ void ParallelDFJK::print_header() const
 //}
 void ParallelDFJK::Fill_C_Matrices(int64_t C_size, double* C_data, SharedMatrix C_matrix)
 {
-    CTF::World dw(MPI_COMM_WORLD);
-    int my_rank = dw.rank;
+    //CTF::World dw(MPI_COMM_WORLD);
+
+    int my_rank = CTF_COMM_->rank;
     if(my_rank == 0)
     {
         for(int bf = 0; bf < primary_->nbf(); bf++)

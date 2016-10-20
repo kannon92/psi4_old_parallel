@@ -983,8 +983,8 @@ class ParallelDFJK : public JK {
         int block_size_ = -1;
         boost::shared_ptr<ERISieve> sieve_;
         std::vector<double> local_quv_;
-        //CTF::Tensor<double>* Quv_ctf_;
-        //CTF::World CTF_COMM_;
+        std::shared_ptr<CTF::Tensor<double> > Quv_ctf_;
+        std::shared_ptr<CTF::World> CTF_COMM_;
 
         void preiterations();
         virtual void postiterations();
