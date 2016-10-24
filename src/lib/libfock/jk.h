@@ -994,6 +994,7 @@ class ParallelDFJK : public JK {
         virtual void postiterations();
         virtual void print_header() const;
         void compute_qmn();
+        std::vector<int> create_shell_processors();
         SharedMatrix J_one_half();
         /// Do a direct J(and/or) K build
         void compute_JK();

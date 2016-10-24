@@ -197,42 +197,14 @@ void ParallelDFJK::compute_qmn()
      outfile->Printf("\n You need %8.4f nodes to fit (Q|MN) on parallel machine", memory_requirement / memory_in_gb);
      outfile->Printf("\n Memory is %8.4f GB per node", memory_requirement / (memory_in_gb * num_proc));
      ///Fuck it.  Just assume that user provided enough memory (or nodes) for now
-     shell_per_process = auxiliary_->nshell() / num_proc;
 
     
     ///Have first proc be from 0 to shell_per_process
     ///Last proc is shell_per_process * my_rank to naux
+    std::vector<int> shells_per_processor = create_shell_processors();
 
-    for(int iproc = 0; iproc < num_proc; iproc++)
-    {
-        int p_shell_start = 0;
-        int p_shell_end = 0;
-        if(iproc != (num_proc - 1))
-        {
-            p_shell_start = shell_per_process * iproc;
-            p_shell_end   = shell_per_process * (iproc + 1);
-        }
-        else
-        {
-            p_shell_start = shell_per_process * iproc;
-            p_shell_end = (auxiliary_->nshell() % num_proc == 0 ? shell_per_process * (iproc + 1) : auxiliary_->nshell());
-        }
-        int p_function_start = auxiliary_->shell(p_shell_start).function_index();
-        int p_function_end = (p_shell_end == auxiliary_->nshell() ? auxiliary_->nbf() : auxiliary_->shell(p_shell_end).function_index());
-        outfile->Printf("\n  P%d shell_start: %d shell_end: %d function_start: %d function_end: %d", iproc, p_shell_start, p_shell_end, p_function_start, p_function_end);
-    }
-    ///set the shell index to be processor specific
-    if(my_rank != (num_proc - 1))
-    {
-        shell_start = shell_per_process * my_rank;
-        shell_end   = shell_per_process * (my_rank + 1);
-    }
-    else
-    {
-        shell_start = shell_per_process * my_rank;
-        shell_end = (auxiliary_->nshell() % num_proc == 0 ? shell_per_process * (my_rank + 1) : auxiliary_->nshell());
-    }
-
+    shell_start = shells_per_processor[0];
+    shell_end   = shells_per_processor[shells_per_processor.size() - 1];
     int function_start = auxiliary_->shell(shell_start).function_index();
     int function_end = (shell_end == auxiliary_->nshell() ? auxiliary_->nbf() : auxiliary_->shell(shell_end).function_index());
     int max_rows = (function_end - function_start);
@@ -266,10 +238,16 @@ void ParallelDFJK::compute_qmn()
     //CTF::Matrix<double> Quv_ctf(naux, nso * nso,dw);
     //CTF::Matrix<double> J_12_ctf(naux, naux,  dw);
     int auv_edge[3] = {naux, nso, nso};
+    int three_sym[3] = {NS, NS, NS};
     int j12_edge[2] = {naux, naux};
-    CTF::Tensor<double> Auv_ctf(3, false, auv_edge, *CTF_COMM_);
-    CTF::Tensor<double> Quv_ctf(3, false, auv_edge, *CTF_COMM_);
+    int auv_part_list[3] = {CTF_COMM_->np, 1, 1};
+
     CTF::Tensor<double> J_12_ctf(2, false,j12_edge, *CTF_COMM_);
+    CTF::Partition auv_part(3, auv_part_list);
+    CTF::Tensor<double> Auv_ctf(3, auv_edge, three_sym, *CTF_COMM_, "Auv", auv_part["Auv"], CTF::Idx_Partition(), "Auv", 0);
+    CTF::Tensor<double> Quv_ctf(3, auv_edge, three_sym, *CTF_COMM_, "Quv", auv_part["Quv"], CTF::Idx_Partition(), "Quv", 0);
+    //CTF::Tensor<double> Auv_ctf(3, false, auv_edge, *CTF_COMM_);
+    //CTF::Tensor<double> Quv_ctf(3, false, auv_edge, *CTF_COMM_);
     printf("\n P%d Tensors are all allocated!", my_rank);
     int64_t local_size = max_rows * nso * nso;
     int64_t * local_index = new int64_t[local_size];
@@ -280,7 +258,7 @@ void ParallelDFJK::compute_qmn()
 
     Timer compute_Auv;
     {
-        std::vector<double> Auv(max_rows * nso * nso, 0.0);
+        std::vector<double> Auv(local_size, 0.0);
         //boost::shared_ptr<Matrix> Auv(new Matrix("(Q|mn)", 8 * max_rows, nso * (unsigned long int) nso));
         //double** Auvp = Auv->pointer();
 
@@ -335,50 +313,51 @@ void ParallelDFJK::compute_qmn()
             }}}
 
         }
-
-        printf("\n Auv local: local_size: %d", local_size);
-        for(int q = 0; q < max_rows; q++)
-            for(int u = 0; u < nso; u++)
-                for(int v = 0; v < nso; v++)
+        if(profile_) printf("\n P%d took %8.4f s to compute Auv integrals", my_rank, compute_integrals_raw.get());
+        Timer creating_offsets;
+        #pragma omp parallel for schedule(static)
+        for(size_t q = 0; q < max_rows; q++)
+            for(size_t u = 0; u < nso; u++)
+                for(size_t v = 0; v < nso; v++)
                 {
                     size_t local_offset = u * nso * (max_rows) + v * (max_rows) + q; 
                     local_index[local_offset] = u * nso * naux + v * naux + q + function_start;
                     local_values[local_offset] = Auv[q * nso * nso + u * nso + v];
                     //local_values[local_offset] = 0.0;
                 }
+        if(profile_) printf("\n P%d Filling offsets for Cyclops takes %8.4f s.", my_rank,creating_offsets.get());
 
+        Timer auv_ctf_write;
         Auv_ctf.write(local_size, local_index, local_values);
-        if(profile_) printf("\n P%d Computing integrals takes %8.4f s.", my_rank, compute_integrals_raw.get());
+        if(profile_) printf("\n P%d Write AUV_CTF takes %8.4f s.", my_rank, auv_ctf_write.get());
     }
     if(profile_) printf("\n  P%d Auv took %8.6f s.", my_rank, compute_Auv.get());
 
-    Timer J_one_half_time;
     SharedMatrix J_12(new Matrix("J^{(-1.0/2)}", naux, naux));
+    Timer J_one_half_time;
     J_12 = J_one_half();
     if(profile_) printf("\n  P%d J^({-1/2}} took %8.6f s and its norm is %8.8f", my_rank, J_one_half_time.get(), J_12->rms());
     
-    int64_t j_size = (int64_t) naux * (int64_t) naux;
-    int64_t * j_indices = new int64_t[j_size];
-    double  * j_values  = new double[j_size];
+    int64_t j_size;
+    int64_t * j_indices;
+    double  * j_values;  
     ///For some reason, cyclops adds to existing data when calling write
     ///Since J_12 is generated, only one processor needs to do the writing
     /// write is also a collective communication
-    for(int64_t q1 = 0; q1 < naux; q1++)
-        for(int64_t q2 = 0; q2 < naux; q2++)
-        {
-            j_indices[q1 * naux + q2] = q1 * naux + q2;
-            if(my_rank == 0)
-                j_values[q1 * naux + q2]  = J_12->get(q1, q2);
-            else j_values[q1 * naux + q2] = 0.0;
-        }
-    
+    Timer fill_j12;
+    J_12_ctf.read_local(&j_size, &j_indices, &j_values);
+    for(int j = 0; j < j_size; j++)
+    {
+        int j1 = j_indices[j] / naux;
+        int j2 = j_indices[j] % naux;
+        j_values[j] = J_12->get(j1, j2);
+    }
+    if(profile_) printf("\n P%d Fill J takes %8.4f s.", my_rank, fill_j12.get());
     Timer J_12_write;
     J_12_ctf.write(j_size, j_indices, j_values);
     if(profile_) printf("\n P%d write of J^{(-1/2)} takes %8.5f s.", my_rank, J_12_write.get());
-
-    delete[] j_indices;
-    delete[] j_values;
-    
+    free(j_indices);
+    free(j_values);
 
     Timer QUV_CONTRACT;
     Quv_ctf["Quv"] = J_12_ctf["QA"] * Auv_ctf["Auv"];
@@ -387,14 +366,15 @@ void ParallelDFJK::compute_qmn()
     double * a_values = new double[local_size];
     Timer quv_ctf_read;
     Quv_ctf.read(local_size, local_index, a_values);
-    if(profile_) printf("\n P%d write of Quv takes %8.5f s.", my_rank,quv_ctf_read.get());
+    if(profile_) printf("\n P%d read of Quv takes %8.5f s.", my_rank,quv_ctf_read.get());
     local_quv_.resize(max_rows * nso * nso);
     Timer get_local_quv;
     double norm2 = 0.0;
     Timer fill_local;
-    for(int q = 0; q < max_rows; q++)
-        for(int u = 0; u < nso; u++)
-            for(int v = 0; v < nso; v++)
+    #pragma omp parallel for schedule(static)
+    for(size_t q = 0; q < max_rows; q++)
+        for(size_t u = 0; u < nso; u++)
+            for(size_t v = 0; v < nso; v++)
     {
         local_quv_[q * nso * nso + u * nso + v] = a_values[u * nso * max_rows + v * max_rows + q];
         //norm2 += local_quv_[q * nso * nso + u * nso + v] * local_quv_[q * nso * nso + u * nso + v];
@@ -410,8 +390,14 @@ void ParallelDFJK::compute_qmn()
 
     if(profile_) printf("\n P%d Get local_quv_ take %8.4f s.", my_rank, get_local_quv.get());
     outfile->Printf("\n Get local_quv takes %8.4f s.", get_local_quv.get());
-    Quv_ctf_.reset();
-    Quv_ctf_ = std::make_shared<CTF::Tensor<double> >(true, Quv_ctf);
+
+    /// If calling sparse_J_compute or sparse_K_compute, fill ptr to (Q|uv)
+    /// Otherwise, I save a copy in local_quv_.  
+    if(sparse_k_ or sparse_j_) 
+    {
+        Quv_ctf_.reset();
+        Quv_ctf_ = std::make_shared<CTF::Tensor<double> >(true, Quv_ctf);
+    }
 
 }
 void ParallelDFJK::compute_J()
@@ -461,6 +447,7 @@ void ParallelDFJK::compute_J()
         if(profile_) printf("\n P%d Allreduce for J takes %8.4f s.", my_rank, all_reduce.get());
 
         if(profile_) printf("\n P%d Compute_J for %d density takes %8.6f s with ||J||: %8.8f", my_rank, Compute_J_one.get(), N, J_temp->norm());
+        if(profile_) outfile->Printf("\n P%d Compute_J for %d density takes %8.6f s with ||J||: %8.8f", my_rank, Compute_J_one.get(), N, J_ao_[N]->rms());
     }
     if(profile_) printf("\nP%d Compute_J takes %8.6f s for %d densities", my_rank, Compute_J_all.get(), J_ao_.size());
 }
@@ -523,7 +510,8 @@ void ParallelDFJK::compute_J_sparse()
         {
             J_ao_[N]->set(j / nso, j % nso, D_right_values[j]);
         }
-        if(profile_) outfile->Printf("\n Compute J sparse took %8.4f s for %d density.", Compute_J_one.get(), N);
+
+        if(profile_) outfile->Printf("\n Compute J sparse took %8.4f s for %d density with a norm of %8.8f.", Compute_J_one.get(), N, J_ao_[N]->rms());
 
     }
 }
@@ -971,6 +959,57 @@ void ParallelDFJK::Localize_Occupied(SharedMatrix C_in, SharedMatrix C_out)
     boost::shared_ptr<Localizer> localizer = Localizer::build("BOYS", primary_, C_copy);
     localizer->localize();
     C_out->copy(localizer->L());
+}
+std::vector<int> ParallelDFJK::create_shell_processors()
+{
+    int my_size;
+    int my_rank;
+    MPI_Comm_rank(MPI_COMM_WORLD, &my_rank);
+    MPI_Comm_size(MPI_COMM_WORLD, &my_size);
+    bool shell_block = true;
+    std::vector<int> shell_map;
+    int shell_start = 0;
+    int shell_end = 0;
+    if(shell_block)
+    {
+        int shell_per_process = auxiliary_->nshell() / my_size;
+        ///set the shell index to be processor specific
+        if(my_rank != (my_size - 1))
+        {
+            shell_start = shell_per_process * my_rank;
+            shell_end   = shell_per_process * (my_rank + 1);
+            shell_map.resize(shell_end - shell_start + 1);
+            std::iota(shell_map.begin(), shell_map.end(), shell_start);
+
+        }
+        else
+        {
+            
+            shell_start = shell_per_process * my_rank;
+            shell_end = (auxiliary_->nshell() % my_size == 0 ? shell_per_process * (my_rank + 1) : auxiliary_->nshell());
+            shell_map.resize(shell_end - shell_start + 1);
+            std::iota(shell_map.begin(), shell_map.end(), shell_start);
+        }
+    }
+    else {
+        for(int s = 0; s < auxiliary_->nshell() + 1; s++)
+        {
+            if(s % my_size == my_rank)
+            {
+                shell_map.push_back(s);
+            }
+        }
+        
+    }
+    int function_numbers = 0;
+    for(int local_shells : shell_map)
+    {
+        function_numbers += auxiliary_->shell(local_shells).nfunction();
+        printf("\n P%d local_shells: %d", my_rank, local_shells);
+    }
+    printf("\n P%d function_number: %d", my_rank, function_numbers);
+
+    return shell_map;
 }
 
 }
