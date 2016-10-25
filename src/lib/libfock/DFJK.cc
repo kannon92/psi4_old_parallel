@@ -33,6 +33,8 @@
 #include <psi4-dec.h>
 #include <psifiles.h>
 #include <libmints/sieve.h>
+#include "libmints/local.h"
+#include "lib3index/cholesky.h"
 #include <libiwl/iwl.hpp>
 #include "jk.h"
 #include "jk_independent.h"
@@ -334,6 +336,7 @@ int DFJK::max_rows() const
         outfile->Printf("\n Setting MAX_ROWS to be 1");
         max_rows = 1L;
     }
+    max_rows = auxiliary_->nbf();
     return (int) max_rows;
 }
 int DFJK::max_nocc() const
@@ -1650,7 +1653,6 @@ void DFJK::rebuild_wK_disk()
         psio_->write(unit_,"Right (Q|w|mn) Integrals",(char*)Amn2p[0],sizeof(double)*nrows*ntri,next_AIA,&next_AIA);
 
         timer_off("JK: (Q|mn)^R Write");
-
     }
     Amn2.reset();
     delete[] eri2;
@@ -1665,11 +1667,13 @@ void DFJK::manage_JK_core()
         if (do_J_) {
             timer_on("JK: J");
             block_J(&Qmn_->pointer()[Q],naux);
+            if(sparse_j_) block_J_sparse(&Qmn_->pointer()[Q], naux);
             timer_off("JK: J");
         }
         if (do_K_) {
             timer_on("JK: K");
             block_K(&Qmn_->pointer()[Q],naux);
+            if(sparse_k_) block_K_sparse(&Qmn_->pointer()[Q],naux);
             timer_off("JK: K");
         }
     }
@@ -1691,6 +1695,7 @@ void DFJK::manage_JK_disk()
             timer_on("JK: J");
             Timer compute_block_j;
             block_J(&Qmn_->pointer()[0],naux);
+            if(sparse_j_) block_J_sparse(&Qmn_->pointer()[0],naux);
             timer_off("JK: J");
             outfile->Printf("\n Compute J takes %8.4f s on %d blocks", compute_block_j.get(), Q);
         }
@@ -1698,6 +1703,7 @@ void DFJK::manage_JK_disk()
             timer_on("JK: K");
             Timer compute_block_k;
             block_K(&Qmn_->pointer()[0],naux);
+            if(sparse_k_) block_K_sparse(&Qmn_->pointer()[0],naux);
             timer_off("JK: K");
             outfile->Printf("\n Compute K takes %8.4f s on %d blocks", compute_block_k.get(), Q);
         }
@@ -1779,6 +1785,80 @@ void DFJK::block_J(double** Qmnp, int naux)
             Jp[n][m] += (m == n ? 0.0 : J2p[mn]);
         }
     }
+}
+void DFJK::block_J_sparse(double ** Qmnp, int naux)
+{
+    outfile->Printf("\n Computing block_J_sparse using CTF");
+    CTF::World comm(MPI_COMM_WORLD);
+    int my_rank = comm.rank;
+    int np      = comm.np;
+    if(np > 1)
+        throw PSIEXCEPTION("Sparse J is not be used in parallel");
+    const std::vector<std::pair<int, int> >& function_pairs = sieve_->function_pairs();
+    unsigned long int num_nm = function_pairs.size();
+
+    int two_size[2] = {num_nm, naux};
+    int two_sym[2]  = {NS, NS};
+    CTF::Tensor<double> Quv_ctf(2, false, two_size, two_sym);
+    CTF::Vector<double> D_ao(num_nm);
+    CTF::Vector<double> J_V(naux);
+    CTF::Vector<double> J_ao(num_nm);
+    int64_t quv_size;
+    double* quv_values;
+    Quv_ctf.read_all(&quv_size, &quv_values);
+    int64_t* quv_index = new int64_t[quv_size];
+    
+    for(int q = 0; q < quv_size; q++)
+    {
+        int my_q =  q / num_nm;
+        int my_so = q % num_nm;
+        quv_values[q] = Qmnp[my_q][my_so];
+        quv_index[q]  = q;
+    }
+    Quv_ctf.write(quv_size, quv_index, quv_values);
+    Quv_ctf.sparsify(1e-10);
+    check_sparsity(Quv_ctf, two_size, 2);
+    outfile->Printf("\n Quv_ctf_norm: %8.8f with %d by %d size", Quv_ctf.norm2(), naux, num_nm);
+    Quv_ctf.print();
+    Qmn_->print();
+
+    for (size_t N = 0; N < J_ao_.size(); N++)
+    {
+        D_ao_[N]->print();
+        double** Dp = D_ao_[N]->pointer();
+        int64_t D_right_size;
+        double* D_right_values;
+        D_ao.read_all(&D_right_size, &D_right_values);
+        int64_t* D_index = new int64_t[D_right_size];
+        for(int munu = 0; munu < D_right_size; munu++)
+        {
+            D_right_values[munu] = Dp[munu / num_nm][munu % num_nm];
+            D_index[munu] = munu;
+        }
+        D_ao.write(D_right_size, D_index, D_right_values);
+        D_ao.sparsify(1e-10);
+        ///J_Q = B^Q_{pq} D_{pq}
+        Timer B_D;
+        J_V["Q"] = Quv_ctf["uQ"] * D_ao["u"];
+        outfile->Printf("\n J_V_norm: %8.8f D_ao: %8.8f", J_V.norm2(), D_ao.norm2());
+        if(profile_) outfile->Printf("\n (B^{Q}_{uv} * D) sparse", B_D.get());
+        Timer B_J;
+        J_ao["u"] = Quv_ctf["uQ"] * J_V["Q"];
+        if(profile_) outfile->Printf("\n (B^{Q}_{uv} * J_v(Q)) sparse", B_J.get());
+        J_ao.read_all(&D_right_size, &D_right_values);
+        for(int j = 0; j < D_right_size; j++)
+        {
+            J_ao_[N]->set(j / num_nm, j % num_nm, D_right_values[j]);
+        }
+        outfile->Printf("\n J_AO_rms: %8.8f",J_ao_[N]->rms());
+
+
+    }
+
+
+}
+void DFJK::block_K_sparse(double** Qmnp, int naux)
+{
 }
 void DFJK::block_K(double** Qmnp, int naux)
 {
@@ -1959,4 +2039,55 @@ void DFJK::block_wK(double** Qlmnp, double** Qrmnp, int naux)
         timer_off("JK: wK2");
     }
 }
+void DFJK::Fill_C_Matrices(int64_t C_size, double* C_data, SharedMatrix C_matrix)
+{
+        for(int bf = 0; bf < primary_->nbf(); bf++)
+            for(int occ = 0; occ < C_matrix->colspi()[0]; occ++){
+                C_data[occ * primary_->nbf() + bf] = 0.0;
+                C_data[occ * primary_->nbf() + bf] = C_matrix->get(bf, occ);
+            }
+}
+void DFJK::check_sparsity(CTF::Tensor<double>& tensor_data, int* tensor_dim, int dimension)
+{
+
+    int non_zeros = 0;
+    int64_t  npair;
+    int64_t * global_idx;
+    double * non_zero_data;
+    tensor_data.read_local_nnz(&npair, &global_idx, &non_zero_data);
+    int total_elements = 1;
+    for(int n = 0; n < dimension; n++)
+        total_elements *= tensor_dim[n];
+
+    non_zeros = npair;
+    outfile->Printf("\n There are %d non-zeros out of %d which is %8.4f percent sparsity", non_zeros, total_elements, ( 1.0 - (non_zeros * 1.0 / total_elements)) * 100.0);
+}
+void DFJK::Choleskify(SharedMatrix D_in, SharedMatrix C_out, std::string cholesky_type)
+{
+    SharedMatrix D_copy(D_in);
+    Cholesky* cholesky;
+    if(cholesky_type == "CHOLESKY_LOCAL")
+    {
+        cholesky = new CholeskyLocal(D_copy, 0.000001, 1000000000);
+    }
+    else {
+        cholesky = new CholeskyMatrix(D_copy, 0.000001, 1000000000);
+    }
+    cholesky->choleskify();
+    SharedMatrix C_raw = cholesky->L();
+    C_out->zero();
+    for(int row = 0; row < C_raw->nrow(); row++)
+        for(int col = 0; col < C_raw->ncol(); col++)
+            C_out->set(col, row, C_raw->get(row, col));
+
+    delete cholesky;
+}
+void DFJK::Localize_Occupied(SharedMatrix C_in, SharedMatrix C_out)
+{
+    SharedMatrix C_copy(C_in);
+    boost::shared_ptr<Localizer> localizer = Localizer::build("BOYS", primary_, C_copy);
+    localizer->localize();
+    C_out->copy(localizer->L());
+}
+
 }

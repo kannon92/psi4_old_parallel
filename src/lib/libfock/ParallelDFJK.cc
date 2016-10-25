@@ -208,6 +208,13 @@ void ParallelDFJK::compute_qmn()
     int function_start = auxiliary_->shell(shell_start).function_index();
     int function_end = (shell_end == auxiliary_->nshell() ? auxiliary_->nbf() : auxiliary_->shell(shell_end).function_index());
     int max_rows = (function_end - function_start);
+    printf("\n Max Rows: %d", max_rows);
+    //max_rows = 0;
+    //for(int local_shell : shells_per_processor)
+    //{
+    //    max_rows += auxiliary_->shell(local_shell).nfunction();
+    //}
+    //printf("\n Max Rows: %d", max_rows);
 
     printf("\n  P%d shell_start: %d shell_end: %d function_start: %d function_end: %d", my_rank, shell_start, shell_end, function_start, function_end);
     printf("\n P%d max_rows: %d", my_rank, max_rows);
@@ -470,6 +477,7 @@ void ParallelDFJK::compute_J_sparse()
     CTF::Vector<double> J_V(naux);
    
     Quv_ctf.sparsify(sparsity_tol_);
+    outfile->Printf("\n Quv_ctf_norm: %8.8f", Quv_ctf.norm2());
     ///(nso -> number of basis functions
 
     ///Local q_uv for get and J_V
@@ -502,14 +510,18 @@ void ParallelDFJK::compute_J_sparse()
         Timer B_D;
         J_V["Q"] = Quv_ctf["Quv"] * D_ao["uv"];
         if(profile_) outfile->Printf("\n (B^{Q}_{uv} * D) sparse", B_D.get());
+        outfile->Printf("\n D_ao_norm: %8.8f", D_ao.norm2());
+        outfile->Printf("\n J_V_norm: %8.8f", J_V.norm2());
         Timer B_J;
         J_ao["uv"] = Quv_ctf["Quv"] * J_V["Q"];
+        outfile->Printf("\n J_ao_norm: %8.8f", J_ao.norm2());
         if(profile_) outfile->Printf("\n (B^{Q}_{uv} * J_v(Q)) sparse", B_J.get());
         J_ao.read_all(&D_right_size, &D_right_values);
         for(int j = 0; j < D_right_size; j++)
         {
             J_ao_[N]->set(j / nso, j % nso, D_right_values[j]);
         }
+        outfile->Printf("\n J_ao_rms: %8.8f", J_ao_[N]->rms());
 
         if(profile_) outfile->Printf("\n Compute J sparse took %8.4f s for %d density with a norm of %8.8f.", Compute_J_one.get(), N, J_ao_[N]->rms());
 
@@ -966,11 +978,10 @@ std::vector<int> ParallelDFJK::create_shell_processors()
     int my_rank;
     MPI_Comm_rank(MPI_COMM_WORLD, &my_rank);
     MPI_Comm_size(MPI_COMM_WORLD, &my_size);
-    bool shell_block = true;
     std::vector<int> shell_map;
     int shell_start = 0;
     int shell_end = 0;
-    if(shell_block)
+    if(shell_block_)
     {
         int shell_per_process = auxiliary_->nshell() / my_size;
         ///set the shell index to be processor specific

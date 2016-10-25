@@ -1389,6 +1389,8 @@ int read_options(const std::string &name, Options & options, bool suppress_print
     options.add_bool("PARALLELDF_SPARSE_J", false);
     /*- Sparsity tolerance for Cyclops -*/
     options.add_double("PARALLELDF_SPARSITY", 1e-10);
+    /*- Shell blocking (shells / Np -> 0th p gets first chunk if true -*/
+    options.add_bool("PARALLELDF_SHELL_BLOCK", false);
 
     /*- SUBSECTION SAD Guess Algorithm -*/
 

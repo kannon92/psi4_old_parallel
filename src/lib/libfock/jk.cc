@@ -109,6 +109,12 @@ boost::shared_ptr<JK> JK::build_JK(boost::shared_ptr<BasisSet> primary, Options&
             jk->set_condition(options.get_double("DF_FITTING_CONDITION"));
         if (options["DF_INTS_NUM_THREADS"].has_changed())
             jk->set_df_ints_num_threads(options.get_int("DF_INTS_NUM_THREADS"));
+        if (options["PARALLELDF_SPARSE_J"].has_changed())
+            jk->sparse_j(options.get_bool("PARALLELDF_SPARSE_J"));
+        if (options["PARALLELDF_SPARSE_K"].has_changed())
+            jk->sparse_k(options.get_bool("PARALLELDF_SPARSE_K"));
+        if (options["PARALLELDF_PROFILE"].has_changed())
+            jk->set_profile(options.get_bool("PARALLELDF_PROFILE"));
 
         return boost::shared_ptr<JK>(jk);
         } else if (jk_type == "PARALLELDF") {
@@ -139,6 +145,8 @@ boost::shared_ptr<JK> JK::build_JK(boost::shared_ptr<BasisSet> primary, Options&
             jk->set_sparse_j(options.get_bool("PARALLELDF_SPARSE_J"));
         if (options["PARALLELDF_SPARSITY"].has_changed())
             jk->set_sparsity_tolerance(options.get_double("PARALLELDF_SPARSITY"));
+        if (options["PARALLELDF_SHELL_BLOCK"].has_changed())
+            jk->set_shell_blocking(options.get_bool("PARALLELDF_SHELL_BLOCK"));
 
         return boost::shared_ptr<JK>(jk);
     } else if (jk_type == "FAST_DF") {

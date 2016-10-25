@@ -786,6 +786,10 @@ protected:
     unsigned int unit_;
     /// Core or disk?
     bool is_core_;
+    /// Do sparse J and sparse K builds with CTF
+    bool sparse_j_ = false;
+    bool sparse_k_ = false;
+    bool profile_  = false;
     /// Maximum number of rows to handle at a time
     int max_rows_;
     /// Maximum number of nocc in C vectors
@@ -839,6 +843,8 @@ protected:
     virtual void manage_JK_core();
     virtual void manage_JK_disk();
     virtual void block_J(double** Qmnp, int naux);
+    void block_J_sparse(double** Qmnp, int naux);
+    void block_K_sparse(double** Qmnp, int naux);
     virtual void block_K(double** Qmnp, int naux);
 
     // => wK <= //
@@ -848,6 +854,15 @@ protected:
     virtual void manage_wK_disk();
     virtual void block_wK(double** Qlmnp, double** Qrmnp, int naux);
     virtual void rebuild_wK_disk();
+
+    // => Cyclops and sparsity functions => //
+    void check_sparsity(CTF::Tensor<double>& my_tensor, int* tensor_dim, int dimension);
+    void Choleskify(SharedMatrix D_in, SharedMatrix C_out, std::string CholeskyType);
+    void Localize_Occupied(SharedMatrix C_in, SharedMatrix C_out);
+
+    /// Function for reading C matrices
+    void Fill_C_Matrices(int64_t C_size, double* C_values, SharedMatrix Actual_C);
+
 
 public:
     // => Constructors < = //
@@ -907,6 +922,15 @@ public:
     * type on output file
     */
     virtual void print_header() const;
+    /**
+    * Do Sparse J build using serial cyclops
+    */
+    virtual void sparse_j(bool sparse_j) { sparse_j_ = sparse_j; }
+    /**
+    * Do Sparse K build using serial cyclops
+    */
+    virtual void sparse_k(bool sparse_k) { sparse_k_ = sparse_k; }
+    void set_profile(bool profile) { profile_ = profile; }
 };
 
 /**
@@ -975,6 +999,7 @@ class ParallelDFJK : public JK {
         void set_sparse_k(bool sparse_k) {sparse_k_ = sparse_k; }
         void set_sparse_j(bool sparse_j) {sparse_j_ = sparse_j; }
         void set_sparsity_tolerance(double sparsity_tolerance) {sparsity_tol_ = sparsity_tolerance; }
+        void set_shell_blocking(bool shell_block) {shell_block_ = shell_block; }
         virtual ~ParallelDFJK();
     protected:
         boost::shared_ptr<BasisSet> auxiliary_;
@@ -984,6 +1009,7 @@ class ParallelDFJK : public JK {
         bool profile_ = false;
         bool sparse_k_ = false;
         bool sparse_j_ = false;
+        bool shell_block_ = true;
         int block_size_ = -1;
         boost::shared_ptr<ERISieve> sieve_;
         std::vector<double> local_quv_;
