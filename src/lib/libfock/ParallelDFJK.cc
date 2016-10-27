@@ -475,6 +475,7 @@ void ParallelDFJK::compute_J_sparse()
     CTF::Tensor<double> D_ao(2, false, D_size, sym_2);
     CTF::Tensor<double> J_ao(2, false, D_size, sym_2);
     CTF::Vector<double> J_V(naux);
+    Quv_ctf.print();
    
     Quv_ctf.sparsify(sparsity_tol_);
     outfile->Printf("\n Quv_ctf_norm: %8.8f", Quv_ctf.norm2());
@@ -498,10 +499,12 @@ void ParallelDFJK::compute_J_sparse()
         D_right_matrix->copy(D_ao_[N]);
         Fill_C_Matrices(D_right_size, D_right_values, D_right_matrix);
         D_ao.write(D_right_size, D_index, D_right_values);
+        if(profile_) outfile->Printf("\n D_ao_norm2: %8.8f", D_ao.norm2());
         if(profile_) outfile->Printf("\n Full_D_AO takes %8.5f s.", Fill_D_AO.get());
         delete[] D_index;
         free(D_right_values);
         D_ao.sparsify(sparsity_tol_);
+        D_ao.print();
 
         ///This loop is parallelized over MPI
         ///Q_UV_GA is distributed with auxiliary_index
@@ -509,13 +512,14 @@ void ParallelDFJK::compute_J_sparse()
         ///J_Q = B^Q_{pq} D_{pq}
         Timer B_D;
         J_V["Q"] = Quv_ctf["Quv"] * D_ao["uv"];
-        if(profile_) outfile->Printf("\n (B^{Q}_{uv} * D) sparse", B_D.get());
+        J_V.print(stdout);
+        if(profile_) outfile->Printf("\n (B^{Q}_{uv} * D) sparse %8.8f", B_D.get());
         outfile->Printf("\n D_ao_norm: %8.8f", D_ao.norm2());
         outfile->Printf("\n J_V_norm: %8.8f", J_V.norm2());
         Timer B_J;
         J_ao["uv"] = Quv_ctf["Quv"] * J_V["Q"];
         outfile->Printf("\n J_ao_norm: %8.8f", J_ao.norm2());
-        if(profile_) outfile->Printf("\n (B^{Q}_{uv} * J_v(Q)) sparse", B_J.get());
+        if(profile_) outfile->Printf("\n (B^{Q}_{uv} * J_v(Q)) sparse 8.8f", B_J.get());
         J_ao.read_all(&D_right_size, &D_right_values);
         for(int j = 0; j < D_right_size; j++)
         {

@@ -790,6 +790,7 @@ protected:
     bool sparse_j_ = false;
     bool sparse_k_ = false;
     bool profile_  = false;
+    double sparsity_tol_ = 1e-10;
     /// Maximum number of rows to handle at a time
     int max_rows_;
     /// Maximum number of nocc in C vectors
@@ -859,6 +860,8 @@ protected:
     void check_sparsity(CTF::Tensor<double>& my_tensor, int* tensor_dim, int dimension);
     void Choleskify(SharedMatrix D_in, SharedMatrix C_out, std::string CholeskyType);
     void Localize_Occupied(SharedMatrix C_in, SharedMatrix C_out);
+
+    std::string sparse_type_ = "ALL";
 
     /// Function for reading C matrices
     void Fill_C_Matrices(int64_t C_size, double* C_values, SharedMatrix Actual_C);
@@ -931,6 +934,8 @@ public:
     */
     virtual void sparse_k(bool sparse_k) { sparse_k_ = sparse_k; }
     void set_profile(bool profile) { profile_ = profile; }
+    void set_sparsity_tolerance(double sparsity_tolerance) {sparsity_tol_ = sparsity_tolerance; }
+    void set_sparse_type(std::string sparse_type) { sparse_type_ = sparse_type; }
 };
 
 /**

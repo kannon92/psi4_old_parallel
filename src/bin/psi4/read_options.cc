@@ -1391,6 +1391,8 @@ int read_options(const std::string &name, Options & options, bool suppress_print
     options.add_double("PARALLELDF_SPARSITY", 1e-10);
     /*- Shell blocking (shells / Np -> 0th p gets first chunk if true -*/
     options.add_bool("PARALLELDF_SHELL_BLOCK", false);
+    /*- Type of sparsity for K term -*/
+    options.add_str("PARALLELDF_SPARSE_TYPE", "ALL", "CHOLESKY LOCALIZE DENSITY CHOLESKY_DENSITY NORMAL ALL");
 
     /*- SUBSECTION SAD Guess Algorithm -*/
 
