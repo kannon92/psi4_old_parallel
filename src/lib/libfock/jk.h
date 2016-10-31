@@ -1005,6 +1005,8 @@ class ParallelDFJK : public JK {
         void set_sparse_j(bool sparse_j) {sparse_j_ = sparse_j; }
         void set_sparsity_tolerance(double sparsity_tolerance) {sparsity_tol_ = sparsity_tolerance; }
         void set_shell_blocking(bool shell_block) {shell_block_ = shell_block; }
+        void set_sparse_type(std::string sparse_type) { sparse_type_ = sparse_type; }
+        void set_tensor_type(std::string tensor_type) { tensor_type_ = tensor_type; }
         virtual ~ParallelDFJK();
     protected:
         boost::shared_ptr<BasisSet> auxiliary_;
@@ -1016,15 +1018,21 @@ class ParallelDFJK : public JK {
         bool sparse_j_ = false;
         bool shell_block_ = true;
         int block_size_ = -1;
+        std::string sparse_type_ = "ALL";
+        std::string tensor_type_ = "CYCLOPS";
         boost::shared_ptr<ERISieve> sieve_;
         std::vector<double> local_quv_;
         std::shared_ptr<CTF::Tensor<double> > Quv_ctf_;
         std::shared_ptr<CTF::World> CTF_COMM_;
+        void compute_qmn_ctf();
 
         void preiterations();
         virtual void postiterations();
         virtual void print_header() const;
-        void compute_qmn();
+        void compute_qmn_ga();
+        void get_or_put_ga_batches(int MY_GA, std::vector<double>& ga_buf, bool ga_get);
+        int Q_UV_GA_;
+        int J_12_GA_;
         std::vector<int> create_shell_processors();
         SharedMatrix J_one_half();
         /// Do a direct J(and/or) K build

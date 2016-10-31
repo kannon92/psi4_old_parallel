@@ -106,8 +106,8 @@ int main(int argc, char **argv)
     ambit::initialize(argc, argv);
 #endif
 //#ifdef HAVE_JK_FACTORY
-    //GA_Initialize();
-    //GA_Register_stack_memory(replace_malloc, replace_free);
+    GA_Initialize();
+    GA_Register_stack_memory(replace_malloc, replace_free);
 //#endif
 
     // Setup the environment

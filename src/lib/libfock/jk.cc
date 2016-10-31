@@ -152,6 +152,11 @@ boost::shared_ptr<JK> JK::build_JK(boost::shared_ptr<BasisSet> primary, Options&
             jk->set_sparsity_tolerance(options.get_double("PARALLELDF_SPARSITY"));
         if (options["PARALLELDF_SHELL_BLOCK"].has_changed())
             jk->set_shell_blocking(options.get_bool("PARALLELDF_SHELL_BLOCK"));
+        if (options["PARALLELDF_SPARSE_TYPE"].has_changed())
+            jk->set_sparse_type(options.get_str("PARALLELDF_SPARSE_TYPE"));
+        if (options["PARALLELDF_TENSOR_TYPE"].has_changed())
+            jk->set_tensor_type(options.get_str("PARALLELDF_TENSOR_TYPE"));
+
 
         return boost::shared_ptr<JK>(jk);
     } else if (jk_type == "FAST_DF") {

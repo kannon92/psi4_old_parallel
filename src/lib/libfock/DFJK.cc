@@ -1973,9 +1973,9 @@ void DFJK::block_K_sparse(double** Qmnp, int naux)
         CTF::Tensor<double> D_right(2, false, K_size, sym_2);
         CTF::Tensor<double> K(2, false, K_size, sym_2);
         int64_t C_left_size;
-        double* C_left_values;
         int64_t C_right_size;
         double* C_right_values;
+        double* C_left_values;
         int64_t* C_index_left;
         int64_t* C_index_right;
 
@@ -2043,7 +2043,7 @@ void DFJK::block_K_sparse(double** Qmnp, int naux)
                 int64_t* D_right_index;
                 double* D_right_values;
 
-                D_right.read_all(&D_right_size, &D_right_index,&D_right_values);
+                D_right.read_local(&D_right_size, &D_right_index,&D_right_values);
                 int64_t* D_index = new int64_t[D_right_size];
                 SharedMatrix D_right_matrix(new Matrix("D_AO", nbf, nbf));
                 D_right_matrix->copy(D_ao_[N]);
@@ -2123,8 +2123,11 @@ void DFJK::block_K_sparse(double** Qmnp, int naux)
             if(profile_) outfile->Printf("\n local_K_ao_rms(%s): %8.8f", local_tests[orbital_type].c_str(), local_K->rms());
             if(profile_) outfile->Printf("\n Computing sparse exchange takes %8.5f s with %s.", sparse_k_type.get(), local_tests[orbital_type].c_str());
         }
+        free(C_right_values);
+        free(C_left_values);
+        free(C_index_left);
+        free(C_index_right);
 
-        delete[] C_index;
         outfile->Printf("\n Overall K_ao_rms = %8.8f", K_ao_[N]->rms());
     }
 }

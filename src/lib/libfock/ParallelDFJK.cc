@@ -10,8 +10,8 @@
 #include <omp.h>
 #include <mpi.h>
 #include <ctf.hpp>
-//#include <ga.h>
-//#include <macdecls.h>
+#include <ga.h>
+#include <macdecls.h>
 namespace psi {
 
 ParallelDFJK::ParallelDFJK(boost::shared_ptr<BasisSet> primary, boost::shared_ptr<BasisSet> auxiliary) : JK(primary), auxiliary_(auxiliary)
@@ -36,7 +36,15 @@ void ParallelDFJK::preiterations()
         sieve_ = boost::shared_ptr<ERISieve>(new ERISieve(primary_, cutoff_));    
     }
     Timer time_qmn;
-    compute_qmn();
+    if(tensor_type_ == "CYCLOPS")
+    {
+        compute_qmn_ctf();
+    }
+    else if ( tensor_type_ == "GA" )
+    {
+        compute_qmn_ga();
+    }
+
     outfile->Printf("\n (Q|MN) takes %8.5f s.", time_qmn.get());
 }
 void ParallelDFJK::compute_JK()
@@ -48,9 +56,15 @@ void ParallelDFJK::compute_JK()
         outfile->Printf("\n computing J takes %8.5f s.", compute_local_j.get());
         if(sparse_j_)
         {
-            Timer compute_J_sparse_time;
-            compute_J_sparse();
-            outfile->Printf("\n computing J Sparse takes %8.5f s.", compute_J_sparse_time.get());
+            if(tensor_type_ == "CYCLOPS")
+            {
+                Timer compute_J_sparse_time;
+                compute_J_sparse();
+                outfile->Printf("\n computing J Sparse takes %8.5f s.", compute_J_sparse_time.get());
+            }
+            else {
+                throw PSIEXCEPTION("J_sparse does not work with GA tensor type");
+            }
         }
     }
     if(do_K_)
@@ -60,9 +74,15 @@ void ParallelDFJK::compute_JK()
         outfile->Printf("\n computing K Dense takes %8.5f s.", compute_local_K.get());
         if(sparse_k_)
         {
-            Timer compute_K_sparse_time;
-            compute_K_sparse();
-            outfile->Printf("\n computing K Sparse takes %8.5f s.", compute_K_sparse_time.get());
+            if(tensor_type_ == "CYCLOPS")
+            {
+                Timer compute_K_sparse_time;
+                compute_K_sparse();
+                outfile->Printf("\n computing K Sparse takes %8.5f s.", compute_K_sparse_time.get());
+            }
+            else {
+                throw PSIEXCEPTION("K_sparse does not work with GA");
+            }
         }
     }
 }
@@ -80,15 +100,6 @@ SharedMatrix ParallelDFJK::J_one_half()
     boost::shared_ptr<Matrix> J(new Matrix("J", naux, naux));
     double** Jp = J->pointer();
 
-    //int dims[2];
-    //int chunk[2];
-    //dims[0] = naux;
-    //dims[1] = naux;
-    //chunk[0] = -1;
-    //chunk[1] = -1;
-    //J_12_GA_ = NGA_Create(C_DBL, 2, dims, (char *)"J_1/2", chunk);
-    //if(not J_12_GA_)
-    //    throw PSIEXCEPTION("Failure in creating J_^(-1/2) in GA");
 
     int my_size;
     int my_rank;
@@ -150,7 +161,7 @@ SharedMatrix ParallelDFJK::J_one_half()
     return J;
 
 }
-void ParallelDFJK::compute_qmn()
+void ParallelDFJK::compute_qmn_ctf()
 {
     //CTF::World dw(MPI_COMM_WORLD);
     int my_rank = CTF_COMM_->rank;
@@ -250,12 +261,13 @@ void ParallelDFJK::compute_qmn()
     int auv_part_list[3] = {CTF_COMM_->np, 1, 1};
 
     CTF::Tensor<double> J_12_ctf(2, false,j12_edge, *CTF_COMM_);
-    CTF::Partition auv_part(3, auv_part_list);
-    CTF::Tensor<double> Auv_ctf(3, auv_edge, three_sym, *CTF_COMM_, "Auv", auv_part["Auv"], CTF::Idx_Partition(), "Auv", 0);
-    CTF::Tensor<double> Quv_ctf(3, auv_edge, three_sym, *CTF_COMM_, "Quv", auv_part["Quv"], CTF::Idx_Partition(), "Quv", 0);
-    //CTF::Tensor<double> Auv_ctf(3, false, auv_edge, *CTF_COMM_);
-    //CTF::Tensor<double> Quv_ctf(3, false, auv_edge, *CTF_COMM_);
+    //CTF::Partition auv_part(3, auv_part_list);
+    //CTF::Tensor<double> Auv_ctf(3, auv_edge, three_sym, *CTF_COMM_, "Auv", auv_part["Auv"], CTF::Idx_Partition(), "Auv", 0);
+    //CTF::Tensor<double> Quv_ctf(3, auv_edge, three_sym, *CTF_COMM_, "Quv", auv_part["Quv"], CTF::Idx_Partition(), "Quv", 0);
+    CTF::Tensor<double> Auv_ctf(3, false, auv_edge, *CTF_COMM_);
+    CTF::Tensor<double> Quv_ctf(3, false, auv_edge, *CTF_COMM_);
     printf("\n P%d Tensors are all allocated!", my_rank);
+    outfile->Printf("\n Tensors are all allocated! Hooray!");
     int64_t local_size = max_rows * nso * nso;
     int64_t * local_index = new int64_t[local_size];
     double * local_values = new double[local_size];
@@ -320,6 +332,7 @@ void ParallelDFJK::compute_qmn()
             }}}
 
         }
+        if(profile_) outfile->Printf("\n Took %8.4f s to compute Auv integrals", compute_integrals_raw.get());
         if(profile_) printf("\n P%d took %8.4f s to compute Auv integrals", my_rank, compute_integrals_raw.get());
         Timer creating_offsets;
         #pragma omp parallel for schedule(static)
@@ -406,6 +419,248 @@ void ParallelDFJK::compute_qmn()
         Quv_ctf_ = std::make_shared<CTF::Tensor<double> >(true, Quv_ctf);
     }
 
+}
+void ParallelDFJK::compute_qmn_ga()
+{
+    // > Sizing < //
+
+    size_t nso = primary_->nbf();
+    size_t naux = auxiliary_->nbf();
+
+    if(block_size_ == -1) block_size_ = pow(2, 31)  / (nso * nso * 8) ;
+
+    // > Threading < //
+
+    int nthread = 1;
+    #ifdef _OPENMP
+        nthread = omp_get_max_threads();
+    #endif
+
+    // > Row requirements < //
+
+    // (Q|mn)
+    size_t per_row = nso * nso;
+
+    // > Maximum number of rows < //
+
+    int test_memory = (memory_ / per_row);
+    //max_rows = 3L * auxiliary_->max_function_per_shell(); // Debug
+    test_memory = (test_memory > auxiliary_->nbf() ? auxiliary_->nbf() : test_memory);
+    int shell_per_process = 0;
+    int shell_start = -1;
+    int shell_end = -1;
+    /// MPI Environment 
+    int my_rank = GA_Nodeid();
+    int num_proc = GA_Nnodes();
+
+     shell_per_process = auxiliary_->nshell() / num_proc;
+     double memory_requirement= 2.0 * naux * nso * nso * 8.0;
+     memory_requirement += (8.0 * naux * naux);
+     memory_requirement /= (1024.0 * 1024.0 * 1024.0);
+     double memory_in_gb      = memory_ / (1024.0 * 1024.0 * 1024.0);
+     outfile->Printf("\n ParallelDF needs %8.5f GB out of %8.5f GB", memory_requirement, memory_in_gb);
+     outfile->Printf("\n You need %8.4f nodes to fit (Q|MN) on parallel machine", memory_requirement / memory_in_gb);
+     outfile->Printf("\n Memory is %8.4f GB per node", memory_requirement / (memory_in_gb * num_proc));
+     ///Fuck it.  Just assume that user provided enough memory (or nodes) for now
+     shell_per_process = auxiliary_->nshell() / num_proc;
+
+    
+    ///Have first proc be from 0 to shell_per_process
+    ///Last proc is shell_per_process * my_rank to naux
+
+    int  dims[2];
+    int chunk[2];
+    dims[0] = naux;
+    dims[1] = nso * nso;
+    chunk[0] = GA_Nnodes();
+    chunk[1] = 1;
+    int map[GA_Nnodes() + 1];
+    for(int iproc = 0; iproc < GA_Nnodes(); iproc++)
+    {
+        int p_shell_start = 0;
+        int p_shell_end = 0;
+        if(iproc != (num_proc - 1))
+        {
+            p_shell_start = shell_per_process * iproc;
+            p_shell_end   = shell_per_process * (iproc + 1);
+        }
+        else
+        {
+            p_shell_start = shell_per_process * iproc;
+            p_shell_end = (auxiliary_->nshell() % num_proc == 0 ? shell_per_process * (iproc + 1) : auxiliary_->nshell());
+        }
+        int p_function_start = auxiliary_->shell(p_shell_start).function_index();
+        int p_function_end = (p_shell_end == auxiliary_->nshell() ? auxiliary_->nbf() : auxiliary_->shell(p_shell_end).function_index());
+        map[iproc] = p_function_start;
+        outfile->Printf("\n  P%d shell_start: %d shell_end: %d function_start: %d function_end: %d", iproc, p_shell_start, p_shell_end, p_function_start, p_function_end);
+    }
+    ///set the shell index to be processor specific
+    if(my_rank != (num_proc - 1))
+    {
+        shell_start = shell_per_process * my_rank;
+        shell_end   = shell_per_process * (my_rank + 1);
+    }
+    else
+    {
+        shell_start = shell_per_process * my_rank;
+        shell_end = (auxiliary_->nshell() % num_proc == 0 ? shell_per_process * (my_rank + 1) : auxiliary_->nshell());
+    }
+
+    int function_start = auxiliary_->shell(shell_start).function_index();
+    int function_end = (shell_end == auxiliary_->nshell() ? auxiliary_->nbf() : auxiliary_->shell(shell_end).function_index());
+    int max_rows = (function_end - function_start);
+
+    printf("\n  P%d shell_start: %d shell_end: %d function_start: %d function_end: %d", GA_Nodeid(), shell_start, shell_end, function_start, function_end);
+    printf("\n P%d max_rows: %d", GA_Nodeid(), max_rows);
+    map[GA_Nnodes()] = 0;
+    outfile->Printf("\n About to create A_UV");
+    int A_UV_GA = NGA_Create_irreg(C_DBL, 2, dims, (char *)"Auv_temp", chunk, map);
+    if(not A_UV_GA)
+    {
+        outfile->Printf("\n GA failed to create (A|UV)");
+        throw PSIEXCEPTION("GA failed on creating Aia_ga");
+    }
+    GA_Print_distribution(A_UV_GA);
+    Q_UV_GA_ = GA_Duplicate(A_UV_GA, (char *)"Q|PQ");
+    if(not Q_UV_GA_)
+    {
+        outfile->Printf("\n GA failed to create (Q|UV) via duplicate");
+        throw PSIEXCEPTION("GA failed on creating GA_Q_PQ");
+    }
+    outfile->Printf("\n Created (A|UV) and (Q|UV) on P0");
+    if(GA_Nodeid() > 1)
+        printf("\n Created (A|UV) and (Q|UV) on P%d", GA_Nodeid());
+
+    // => ERI Objects <= //
+
+    boost::shared_ptr<IntegralFactory> factory(new IntegralFactory(auxiliary_, BasisSet::zero_ao_basis_set(), primary_, primary_));
+    std::vector<boost::shared_ptr<TwoBodyAOInt> > eri;
+    for (int thread = 0; thread < nthread; thread++) {
+            eri.push_back(boost::shared_ptr<TwoBodyAOInt>(factory->eri()));
+    }
+
+    // => ERI Sieve <= //
+
+    //boost::shared_ptr<ERISieve> sieve(new ERISieve(primary_, 1e-10));
+    const std::vector<std::pair<int,int> >& shell_pairs = sieve_->shell_pairs();
+    long int nshell_pairs = (long int) shell_pairs.size();
+
+    // => Temporary Tensors <= //
+
+    // > Three-index buffers < //
+    //// ==> Master Loop <== //
+
+    int Auv_begin[2];
+    int Auv_end[2];
+    /// SIMD 
+    ///shell_start represents the start of shells for this processor
+    ///shell_end represents the end of shells for this processor
+    ///NOTE:  This code will have terrible load balance (shells do not correspond to equal number of functions
+    Timer compute_Auv;
+    {
+        //boost::shared_ptr<Matrix> Auv(new Matrix("(Q|mn)", 8 * max_rows, nso * (unsigned long int) nso));
+        std::vector<double> Auv(max_rows * nso * nso, 0.0);
+        //double** Auvp = Auv->pointer();
+
+        int Pstart = shell_start;
+        int Pstop  = shell_end;
+        int nPshell = Pstop - Pstart;
+        int pstart = auxiliary_->shell(Pstart).function_index();
+        int pstop = (Pstop == auxiliary_->nshell() ? auxiliary_->nbf() : auxiliary_->shell(Pstop).function_index());
+        int rows = pstop - pstart;
+
+        // > (Q|mn) ERIs < //
+
+        //::memset((void*) Auvp[0], '\0', sizeof(double) * rows * nso * nso);
+        if(debug_) printf("\n P%d rows: %d (%d - %d)", GA_Nodeid(), rows, pstop, pstart);
+        if(debug_) printf("\n P%d maxrows: %d", GA_Nodeid(), max_rows);
+
+        Timer compute_integrals_raw;
+        if(profile_) printf("\n P%d about to compute integrals", GA_Nodeid());
+        #pragma omp parallel for schedule(dynamic) num_threads(nthread)
+        for (long int PMN = 0L; PMN < nPshell * nshell_pairs; PMN++) {
+
+            int thread = 0;
+            #ifdef _OPENMP
+                thread = omp_get_thread_num();
+            #endif
+
+            int P  = PMN / nshell_pairs + Pstart;
+            int MN = PMN % nshell_pairs;
+            std::pair<int,int> pair = shell_pairs[MN];
+            int M = pair.first;
+            int N = pair.second;
+
+            eri[thread]->compute_shell(P,0,M,N);
+
+            int nm = primary_->shell(M).nfunction();
+            int nn = primary_->shell(N).nfunction();
+            int np = auxiliary_->shell(P).nfunction();
+            int om = primary_->shell(M).function_index();
+            int on = primary_->shell(N).function_index();
+            int op = auxiliary_->shell(P).function_index();
+
+            const double* buffer = eri[thread]->buffer();
+
+            for (int p = 0; p < np; p++) {
+            for (int m = 0; m < nm; m++) {
+            for (int n = 0; n < nn; n++) {
+                //Auvp[p + op - pstart][(m + om) * nso + (n + on)] =
+                //Auvp[p + op - pstart][(n + on) * nso + (m + om)] =
+                Auv[(p + op - pstart) * nso * nso  + (m + om) * nso + (n + on)] = 
+                Auv[(p + op - pstart) * nso * nso  + (n + on) * nso + (m + om)] = 
+                (*buffer++);
+            }}}
+
+        }
+        if(profile_) printf("\n P%d Computing integrals takes %8.4f s.", GA_Nodeid(), compute_integrals_raw.get());
+        //NGA_Distribution(A_UV_GA, GA_Nodeid(), Auv_begin, Auv_end);
+        //int ld = nso * nso;
+        Timer put_ga_auv;
+        get_or_put_ga_batches(A_UV_GA, Auv, false);
+        if(profile_) printf("\n P%d Placing Auv into Distributed memory takes %8.4f s.", GA_Nodeid(), put_ga_auv.get());
+    }
+    if(profile_) printf("\n  P%d Auv took %8.6f s.", GA_Nodeid(), compute_Auv.get());
+
+    int dims_j[2];
+    int chunk_j12[2];
+    int j_begin[2] = {0, 0};
+    int j_end[2]   = {naux - 1, naux - 1};
+    dims_j[0] = naux;
+    dims_j[1] = naux;
+    chunk_j12[0] = -1;
+    chunk_j12[1] = -1;
+
+    J_12_GA_ = NGA_Create(C_DBL, 2, dims_j, (char *)"J_1/2", chunk_j12);
+    if(not J_12_GA_)
+        throw PSIEXCEPTION("Failure in creating J_^(-1/2) in GA");
+    Timer J_one_half_time;
+    SharedMatrix j_12 = J_one_half();
+    if(profile_) printf("\n P%d J_12 took %8.6f s.", GA_Nodeid(), J_one_half_time.get());
+    
+    Timer J_put;
+    int naux_int = naux;
+    NGA_Put(J_12_GA_, j_begin, j_end, j_12->pointer()[0], &naux_int);
+    if(profile_) printf("\n P%d J_12_put took %8.6f s.", GA_Nodeid(), J_put.get());
+
+    Timer GA_DGEMM;
+    GA_Dgemm('N', 'N', naux, nso * nso, naux, 1.0, J_12_GA_, A_UV_GA, 0.0, Q_UV_GA_);
+    //DF_Dgemm(J_12_GA_, A_UV_GA, Q_UV_GA_);
+    if(profile_) printf("\n  P%d DGEMM took %8.6f s.", GA_Nodeid(), GA_DGEMM.get());
+    outfile->Printf("\n GA_Dgemm takes %8.4f s.", GA_DGEMM.get());
+    local_quv_.resize(max_rows * nso * nso);
+    Timer get_local_quv;
+    get_or_put_ga_batches(Q_UV_GA_, local_quv_, true);
+    if(profile_) printf("\n P%d Get local_quv_ take %8.4f s.", GA_Nodeid(), get_local_quv.get());
+    outfile->Printf("\n Get local_quv takes %8.4f s.", get_local_quv.get());
+
+    Timer destroy_ga_arrays;
+    GA_Destroy(A_UV_GA);
+    if(profile_) printf("\n P%d Destroyed A_UV takes %8.4f s.", destroy_ga_arrays.get());
+    GA_Destroy(J_12_GA_);
+    if(profile_) printf("\n P%d Destroyed J_{12} takes %8.4f s.", destroy_ga_arrays.get());
+    GA_Destroy(Q_UV_GA_);
+    if(profile_) printf("\n P%d Destroyed Q_UV takes %8.4f s.", destroy_ga_arrays.get());
 }
 void ParallelDFJK::compute_J()
 {
@@ -659,11 +914,17 @@ void ParallelDFJK::compute_K_sparse()
     int aux_edge[3] = {naux, nbf, nbf};
 
     std::vector<std::string> local_tests;
-    local_tests.push_back("NORMAL");
-    local_tests.push_back("LOCALIZE");
-    local_tests.push_back("CHOLESKY");
-    local_tests.push_back("DENSITY");
-    local_tests.push_back("CHOLESKY_DENSITY");
+    if(sparse_type_ == "ALL")
+    {
+        local_tests.push_back("NORMAL");
+        local_tests.push_back("LOCALIZE");
+        local_tests.push_back("CHOLESKY");
+        local_tests.push_back("DENSITY");
+        local_tests.push_back("CHOLESKY_DENSITY");
+    }
+    else {
+        local_tests.push_back(sparse_type_);
+    }
 
     CTF::Tensor<double> Quv_ctf(true, *Quv_ctf_);
     Quv_ctf.sparsify(sparsity_tol_);
@@ -848,44 +1109,45 @@ void ParallelDFJK::postiterations()
 void ParallelDFJK::print_header() const
 {
 }
-//void ParallelDFJK::get_or_put_ga_batches(int MY_GA, std::vector<double>& ga_buf, bool ga_get)
-//{
-//    int begin_offset[2];
-//    int end_offset[2];
-//    NGA_Distribution(MY_GA, my_rank, begin_offset, end_offset);
-//    int stride = end_offset[1] - begin_offset[1] + 1;
-//    if(end_offset[0] - begin_offset[0] < block_size_)
-//    {   
-//        //printf("\n GA_GET: %d offset[0] = (%d, %d)", ga_get, begin_offset[0], end_offset[0]);
-//        if(ga_get)
-//            NGA_Get(MY_GA, begin_offset, end_offset, &ga_buf[0], &stride);
-//        else
-//            NGA_Put(MY_GA, begin_offset, end_offset, &ga_buf[0], &stride);
-//
-//    }
-//    else {
-//        ///Since I am here, I need to read in batches of naux. 
-//        int naux_batch = (end_offset[0] - begin_offset[0] + 1) / block_size_;
-//        int naux_begin =  begin_offset[0];
-//        int naux_end   =  end_offset[0];
-//        for(int batch = 0; batch < naux_batch; batch++)
-//        {   
-//            int begin = naux_begin + (batch * block_size_);
-//            int end   = (batch == naux_batch - 1) ? naux_end : naux_begin + (batch + 1) * block_size_ - 1;
-//            begin_offset[0] = begin;
-//            end_offset[0] = end;
-//            //printf("\n P%d offset[%d][0] = (%d, %d) offset[%d][1] = (%d, %d) and ld: %d", my_rank, batch, begin_offset[0], end_offset[0], batch, begin_offset[1], end_offset[1], stride);
-//            if(ga_get)
-//                NGA_Get(MY_GA, begin_offset, end_offset, &ga_buf[(batch * block_size_) * stride], &stride);
-//            else
-//                NGA_Put(MY_GA, begin_offset, end_offset, &ga_buf[(batch * block_size_) * stride], &stride);
-//        }
-//    }
-//    double ga_buf_norm = 0.0;
-//    //for(auto value : ga_buf)
-//    //    ga_buf_norm += value * value;
-//    //printf("\n Norm in get_ga: %8.8f", sqrt(ga_buf_norm));
-//}
+void ParallelDFJK::get_or_put_ga_batches(int MY_GA, std::vector<double>& ga_buf, bool ga_get)
+{
+    int begin_offset[2];
+    int end_offset[2];
+    int my_rank = GA_Nodeid();
+    NGA_Distribution(MY_GA, my_rank, begin_offset, end_offset);
+    int stride = end_offset[1] - begin_offset[1] + 1;
+    if(end_offset[0] - begin_offset[0] < block_size_)
+    {   
+        //printf("\n GA_GET: %d offset[0] = (%d, %d)", ga_get, begin_offset[0], end_offset[0]);
+        if(ga_get)
+            NGA_Get(MY_GA, begin_offset, end_offset, &ga_buf[0], &stride);
+        else
+            NGA_Put(MY_GA, begin_offset, end_offset, &ga_buf[0], &stride);
+
+    }
+    else {
+        ///Since I am here, I need to read in batches of naux. 
+        int naux_batch = (end_offset[0] - begin_offset[0] + 1) / block_size_;
+        int naux_begin =  begin_offset[0];
+        int naux_end   =  end_offset[0];
+        for(int batch = 0; batch < naux_batch; batch++)
+        {   
+            int begin = naux_begin + (batch * block_size_);
+            int end   = (batch == naux_batch - 1) ? naux_end : naux_begin + (batch + 1) * block_size_ - 1;
+            begin_offset[0] = begin;
+            end_offset[0] = end;
+            //printf("\n P%d offset[%d][0] = (%d, %d) offset[%d][1] = (%d, %d) and ld: %d", my_rank, batch, begin_offset[0], end_offset[0], batch, begin_offset[1], end_offset[1], stride);
+            if(ga_get)
+                NGA_Get(MY_GA, begin_offset, end_offset, &ga_buf[(batch * block_size_) * stride], &stride);
+            else
+                NGA_Put(MY_GA, begin_offset, end_offset, &ga_buf[(batch * block_size_) * stride], &stride);
+        }
+    }
+    double ga_buf_norm = 0.0;
+    //for(auto value : ga_buf)
+    //    ga_buf_norm += value * value;
+    //printf("\n Norm in get_ga: %8.8f", sqrt(ga_buf_norm));
+}
 //void ParallelDFJK::DF_Dgemm(int GA_left, int GA_right, int GA_final)
 //{
 //    if(GA_Nnodes() == 0)

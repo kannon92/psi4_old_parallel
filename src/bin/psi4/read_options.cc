@@ -1393,6 +1393,8 @@ int read_options(const std::string &name, Options & options, bool suppress_print
     options.add_bool("PARALLELDF_SHELL_BLOCK", false);
     /*- Type of sparsity for K term -*/
     options.add_str("PARALLELDF_SPARSE_TYPE", "ALL", "CHOLESKY LOCALIZE DENSITY CHOLESKY_DENSITY NORMAL ALL");
+    /*- Type of tensor library for parallel tensor contractions -*/
+    options.add_str("PARALLELDF_TENSOR_TYPE", "CYCLOPS", "CYCLOPS GA");
 
     /*- SUBSECTION SAD Guess Algorithm -*/
 
